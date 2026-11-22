@@ -114,6 +114,33 @@ def _cmd_search(args: argparse.Namespace) -> None:
         print(f"  ref: {h['session_id']} / {h['uuid']}")
 
 
+def _cmd_score(args: argparse.Namespace) -> None:
+    import json
+    from zoneinfo import ZoneInfo
+
+    from pompy import score
+
+    conn = _open_store()
+    result = score.compute(conn, ZoneInfo(args.tz) if args.tz else None)
+    conn.close()
+    if not result["typed_prompts"]:
+        print("No prompts yet. Run `pompy ingest` first.")
+        return
+    out = config.out_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "specificity.json").write_text(json.dumps(result, indent=2))
+    print(json.dumps(result, indent=2) if args.json else score.render(result))
+    if not args.json:
+        print(f"\n(saved to {out / 'specificity.json'})")
+
+
+def _cmd_check(args: argparse.Namespace) -> None:
+    from pompy import score
+
+    text = " ".join(args.text)
+    print(score.render_check(text, score.score_text(text)))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="pompy", description=__doc__)
     parser.add_argument("--version", action="version", version=f"pompy {__version__}")
@@ -146,6 +173,15 @@ def main() -> None:
     p_search.add_argument("--raw", action="store_true", help="pass FTS5 syntax through as-is")
     p_search.add_argument("--tz", help="time zone for dates (default: this Mac's)")
     p_search.set_defaults(func=_cmd_search)
+
+    p_score = sub.add_parser("score", help="specificity score + friction analysis of your prompts")
+    p_score.add_argument("--tz", help="time zone for monthly trend (default: this Mac's)")
+    p_score.add_argument("--json", action="store_true", help="print the raw JSON")
+    p_score.set_defaults(func=_cmd_score)
+
+    p_check = sub.add_parser("check", help="score a draft prompt before you send it")
+    p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")
+    p_check.set_defaults(func=_cmd_check)
 
     args = parser.parse_args()
     if args.command is None:

@@ -51,7 +51,7 @@ install integrate investigate launch list load look make merge migrate move open
 plan polish publish pull push put read rebuild redesign refactor remove rename replace research
 reset restart review rewrite run save scan search send set setup ship show simplify sort split
 start stop summarize switch sync test track try turn undo update upgrade upload use verify write
-keep ignore get identify restructure redeploy enlarge tailor clone reload rotate allow
+keep ignore get identify restructure redeploy enlarge tailor clone reload rotate allow archive
 """.split())
 
 # Words that may precede the real first verb: "ok so now please fix …".

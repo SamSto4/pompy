@@ -47,11 +47,14 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 - The store is versioned: when the schema or parsing rules change, the next `pompy ingest` rebuilds automatically from `data/raw/`.
 - 🧠 *Learning:* keyword search is the "exact match" half of hybrid retrieval. Phase 2 adds the "meaning" half (embeddings) and merges the two.
 
-### Step 6: Prompt Specificity Score v0 + friction signals
-- Rule-based rubric, one point each: **goal** stated · **context** given · **constraints** · **acceptance criteria / done-definition** · **output format** · **example** · **concrete reference** (file path, URL, code, error text).
-- Friction after a prompt: the next human turn is a correction ("no", "actually", "instead", "that's not"), an interrupt, or a rephrase.
-- Correlate score with friction: *do your low-scoring prompts actually cause more back-and-forth?*
-- **Done when:** each prompt has a score and a friction flag, and the correlation shows up in `out/insights.json`.
+### Step 6: Prompt Specificity Score v0 + friction signals ✅
+- **Roles first:** only *task* prompts are scored. Replies ("yes"), short corrections ("try again"), routine commands ("commit and push") and wordless prompts are complete for what they do, so they aren't judged.
+- **Rubric (0–7), rule-based and instant:** goal · context · constraints · done-definition · output format · example · concrete reference (file, error text, URL, code; pasted text and screenshots count).
+- **Friction after a prompt** (between it and your next prompt in the session): **correction** ("no, …", "try again"), **problem report** ("why am I getting a 404", "isn't responding"; calibrated on real follow-ups), **interrupt**, **rejected tool call**, **rephrase** (nearly the same request within 10 min).
+- `pompy score` → `out/specificity.json` + a `prompt_scores` table: score distribution, session openers vs follow-ups, monthly trend, how often each feature appears, friction with vs without each feature, friction by score and length, and the low-scoring prompts that led to friction. Rates from fewer than 15 prompts are flagged "thin".
+- `pompy check "<draft>"`: scores a draft before you send it and suggests what to add (the seed of Pre-flight, Step 9).
+- **Known limit:** Pompy can't yet see Claude's replies, so its strongest vagueness signal, Claude asking "which bug do you mean?", is invisible. Capturing reply excerpts (needed for Phase 2 exchange excerpts anyway) would add it.
+- 🧠 *Learning:* a pattern is only as good as its signal. The first friction detector caught 3.8% of prompts; calibrating it against real follow-ups more than doubled that. Always check what a detector misses before trusting its correlations.
 
 ### Step 7: Short-term memory object
 - A `WorkingSet` class holds the analysis window (**default: all-time**, since Pompy's first ingest), the current question, and the retrieved snippets. Every insight function takes a `WorkingSet` as input.

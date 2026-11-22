@@ -8,7 +8,25 @@ from pathlib import Path, PurePosixPath
 
 from pompy.parse import Event, Item, Prompt, SessionInfo, Turn
 
-SCHEMA = """
+# Derived by `pompy score` and recomputed each run, so it can be dropped and recreated freely.
+PROMPT_SCORES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS prompt_scores (  -- derived by `pompy score`; recomputed each run
+    uuid        TEXT PRIMARY KEY,
+    session_id  TEXT,
+    ts          TEXT,
+    role        TEXT,                 -- task | reply | routine | other
+    score       INTEGER,              -- 0-7 for tasks, NULL otherwise
+    f_goal INTEGER, f_context INTEGER, f_constraints INTEGER, f_done INTEGER,
+    f_format INTEGER, f_example INTEGER, f_reference INTEGER,
+    fr_correction INTEGER, fr_problem INTEGER, fr_interrupt INTEGER, fr_rejected INTEGER,
+    fr_rephrase INTEGER,
+    friction    INTEGER,
+    rubric_version INTEGER
+);
+"""
+
+SCHEMA = (
+    """
 CREATE TABLE IF NOT EXISTS sessions (
     session_id     TEXT PRIMARY KEY,
     project_key    TEXT,              -- short hash of the folder path (safe to share)
@@ -83,6 +101,8 @@ CREATE INDEX IF NOT EXISTS idx_prompts_ts ON prompts(ts);
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id);
 CREATE INDEX IF NOT EXISTS idx_tool_uses_message ON tool_uses(message_id);
 """
+    + PROMPT_SCORES_SCHEMA
+)
 
 
 # Bump when the schema OR the parsing rules change: older stores are rebuilt from data/raw/.
