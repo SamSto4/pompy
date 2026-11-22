@@ -34,6 +34,13 @@ class Report:
 def ingest(source: Path, data: Path, copy_raw: bool = True) -> Report:
     """Read new transcript lines from `source` into `data/pompy.db` (and `data/raw/`)."""
     conn = store.connect(data / "pompy.db")
+    if store.needs_rebuild(conn):  # made by an older Pompy
+        conn.close()
+        if copy_raw and (data / "raw").exists():
+            rebuild(data, source)  # re-derive everything from the raw copies, then continue
+        else:
+            _delete_db(data / "pompy.db")
+        conn = store.connect(data / "pompy.db")
     report = Report()
     try:
         for path in sorted(source.glob("*/*.jsonl")):
@@ -54,8 +61,7 @@ def rebuild(data: Path, source: Path | None = None) -> Report:
     """
     db = data / "pompy.db"
     keep_subagents = _read_subagent_counts(db)
-    for suffix in ("", "-wal", "-shm"):
-        Path(f"{db}{suffix}").unlink(missing_ok=True)
+    _delete_db(db)
     report = ingest(data / "raw", data, copy_raw=False)
     conn = store.connect(db)
     conn.executemany(
@@ -72,6 +78,11 @@ def rebuild(data: Path, source: Path | None = None) -> Report:
     conn.commit()
     conn.close()
     return report
+
+
+def _delete_db(db: Path) -> None:
+    for suffix in ("", "-wal", "-shm"):
+        Path(f"{db}{suffix}").unlink(missing_ok=True)
 
 
 def _ingest_file(

@@ -30,3 +30,15 @@ def test_pasted_markup_is_kept():
     record = _user("why does this fail? <key>CFBundleName</key>", promptSource="typed")
     [prompt] = [i for i in parse_record(record, "s1") if isinstance(i, Prompt)]
     assert "<key>CFBundleName</key>" in prompt.text
+
+
+def test_paste_closing_tag_with_id_is_removed_from_own_words():
+    """Real Claude Code writes the id on the closing tag too: </pasted_content id="...">."""
+    record = _user(
+        '<pasted_content id="p9">\nKeyError: id\n</pasted_content id="p9">\nwhy does this happen',
+        promptSource="sdk",
+    )
+    [prompt] = [i for i in parse_record(record, "s1") if isinstance(i, Prompt)]
+    assert prompt.own_text == "why does this happen"
+    assert "KeyError" in prompt.text and "pasted_content" not in prompt.text
+    assert prompt.has_paste and prompt.word_len == 4

@@ -34,10 +34,18 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 - `--tz America/New_York` overrides the time zone; `--json` prints the raw data.
 - **Done when:** `pompy stats` prints a readable summary and writes `out/stats.json`.
 
-### Step 5: Keywords and themes
-- Tokenize prompts and remove stopwords, then compute TF-IDF top terms overall and per month. Also find frequent action verbs and slash-command usage.
-- **Done when:** `out/keywords.json` lists top terms and verbs, with counts.
-- 🧠 *Learning:* this is the simplest kind of "retrieval index". Phase 2 adds vectors on top of it.
+### Step 5: Keywords and themes ✅
+- **Your own words only:** prompts now store `own_text` (pasted blocks removed) next to the full `text`, so a pasted error log never counts as your vocabulary. Code, URLs, file paths, JSON keys and camelCase/snake_case identifiers are references, not words (Step 6 uses them).
+- `pompy keywords` → `out/keywords.json`:
+  - **Top terms**, ranked by how many prompts mention them (so one long prompt can't dominate), plus how many sessions; plurals folded ("pages" → "page").
+  - **Recurring phrases** (two-word pairs like "nav bar", "free trial").
+  - **Action verbs** tracked separately: which verb opens your prompts ("fix", "commit", "continue", …).
+  - **Opening style:** command · question · request · reply · statement.
+  - **Style markers:** "let's", "I want", constraints like "don't / never", "please", "thanks".
+  - **Themes per project and per month** with TF-IDF (what's distinctive, not just frequent).
+- `pompy search <words>`: **keyword search over every prompt** (SQLite FTS5, BM25 ranking, word stems match: "fixing bugs" finds "fix the bug"). Every hit carries its source reference (session + record id). This is layer 3a of the [RAG architecture](RAG_ARCHITECTURE.md).
+- The store is versioned: when the schema or parsing rules change, the next `pompy ingest` rebuilds automatically from `data/raw/`.
+- 🧠 *Learning:* keyword search is the "exact match" half of hybrid retrieval. Phase 2 adds the "meaning" half (embeddings) and merges the two.
 
 ### Step 6: Prompt Specificity Score v0 + friction signals
 - Rule-based rubric, one point each: **goal** stated · **context** given · **constraints** · **acceptance criteria / done-definition** · **output format** · **example** · **concrete reference** (file path, URL, code, error text).

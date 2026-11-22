@@ -33,6 +33,9 @@ _INJECTED_RE = re.compile(
     r"<(" + "|".join(INJECTED_TAGS) + r")\b[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE
 )
 _PASTE_RE = re.compile(r"</?pasted_content\b[^>]*>", re.IGNORECASE)
+_PASTE_BLOCK_RE = re.compile(
+    r"<pasted_content\b[^>]*>.*?</pasted_content\b[^>]*>", re.DOTALL | re.IGNORECASE
+)
 _IMAGE_MARKER_RE = re.compile(r"\[Image[: #][^\]]*\]")
 _COMMAND_NAME_RE = re.compile(r"<command-name>(.*?)</command-name>", re.DOTALL)
 _COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
@@ -62,7 +65,8 @@ class Prompt:
     ts: str | None
     kind: str  # typed | command | bash | suggestion
     source: str | None  # Claude Code's promptSource: typed, sdk, queued, ...
-    text: str
+    text: str  # everything you sent, pasted text included (for search)
+    own_text: str = ""  # only the words you wrote yourself (for keyword and style analysis)
     has_paste: bool = False
     has_image: bool = False
     parent_uuid: str | None = None
@@ -73,7 +77,8 @@ class Prompt:
 
     @property
     def word_len(self) -> int:
-        return len(self.text.split())
+        """How much you wrote yourself (pasted text doesn't count)."""
+        return len(self.own_text.split())
 
 
 @dataclass
@@ -178,7 +183,7 @@ def _parse_user(r: dict, session_id: str) -> list[Item]:
     if raw.startswith(_SYSTEM_BRACKET_PREFIXES):
         return []
 
-    kind, text, has_paste, marker_image = _clean_text(raw)
+    kind, text, own_text, has_paste, marker_image = _clean_text(raw)
     if not text:
         return []
     if kind == "typed" and r.get("promptSource") == "suggestion_accepted":
@@ -192,6 +197,7 @@ def _parse_user(r: dict, session_id: str) -> list[Item]:
             kind=kind,
             source=r.get("promptSource"),
             text=text,
+            own_text=own_text,
             has_paste=has_paste,
             has_image=has_image or marker_image,
             parent_uuid=r.get("parentUuid"),
@@ -199,24 +205,26 @@ def _parse_user(r: dict, session_id: str) -> list[Item]:
     ]
 
 
-def _clean_text(raw: str) -> tuple[str, str, bool, bool]:
-    """Return (kind, cleaned_text, has_paste, has_image_marker)."""
+def _clean_text(raw: str) -> tuple[str, str, str, bool, bool]:
+    """Return (kind, text, own_text, has_paste, has_image_marker)."""
     name = _COMMAND_NAME_RE.search(raw)
     if name:
         args = _COMMAND_ARGS_RE.search(raw)
         arg_text = args.group(1).strip() if args else ""
-        return "command", f"{name.group(1).strip()} {arg_text}".strip(), False, False
+        command = f"{name.group(1).strip()} {arg_text}".strip()
+        return "command", command, command, False, False
 
     bash = _BASH_INPUT_RE.search(raw)
     if bash:
-        return "bash", bash.group(1).strip(), False, False
+        return "bash", bash.group(1).strip(), bash.group(1).strip(), False, False
 
     text = _INJECTED_RE.sub("", raw)
-    has_paste = bool(_PASTE_RE.search(text))
-    text = _PASTE_RE.sub("", text)
     has_image = bool(_IMAGE_MARKER_RE.search(text))
     text = _IMAGE_MARKER_RE.sub("", text)
-    return "typed", text.strip(), has_paste, has_image
+    has_paste = bool(_PASTE_RE.search(text))
+    own_text = _PASTE_BLOCK_RE.sub(" ", text)
+    text = _PASTE_RE.sub("", text)
+    return "typed", text.strip(), " ".join(own_text.split()), has_paste, has_image
 
 
 def _is_rejection(content) -> bool:

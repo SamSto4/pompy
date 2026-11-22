@@ -22,12 +22,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     subagent_files INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS prompts (
-    uuid        TEXT PRIMARY KEY,
+    id          INTEGER PRIMARY KEY,  -- stable row id for the keyword index
+    uuid        TEXT NOT NULL UNIQUE,
     session_id  TEXT NOT NULL,
     ts          TEXT,                 -- UTC ISO-8601, as Claude Code wrote it
     kind        TEXT NOT NULL,        -- typed | command | bash | suggestion
     source      TEXT,
-    text        TEXT NOT NULL,
+    text        TEXT NOT NULL,        -- everything sent, pasted text included
+    own_text    TEXT NOT NULL,        -- only the words you wrote (pasted blocks removed)
     char_len    INTEGER,
     word_len    INTEGER,
     has_paste   INTEGER,
@@ -66,6 +68,16 @@ CREATE TABLE IF NOT EXISTS files (     -- ingest bookkeeping: how far each trans
     offset      INTEGER NOT NULL,
     size        INTEGER NOT NULL
 );
+-- Layer 3a of the RAG architecture: keyword / exact-match index (BM25), with stemming.
+CREATE VIRTUAL TABLE IF NOT EXISTS prompts_fts USING fts5(
+    text, content='prompts', content_rowid='id', tokenize='porter unicode61'
+);
+CREATE TRIGGER IF NOT EXISTS prompts_fts_insert AFTER INSERT ON prompts BEGIN
+    INSERT INTO prompts_fts(rowid, text) VALUES (new.id, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS prompts_fts_delete AFTER DELETE ON prompts BEGIN
+    INSERT INTO prompts_fts(prompts_fts, rowid, text) VALUES ('delete', old.id, old.text);
+END;
 CREATE INDEX IF NOT EXISTS idx_prompts_session ON prompts(session_id);
 CREATE INDEX IF NOT EXISTS idx_prompts_ts ON prompts(ts);
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id);
@@ -73,13 +85,27 @@ CREATE INDEX IF NOT EXISTS idx_tool_uses_message ON tool_uses(message_id);
 """
 
 
+# Bump when the schema OR the parsing rules change: older stores are rebuilt from data/raw/.
+SCHEMA_VERSION = 3
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.executescript(SCHEMA)
+    is_new = not conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'prompts'").fetchone()
+    if is_new:
+        conn.executescript(SCHEMA)
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    elif not needs_rebuild(conn):
+        conn.executescript(SCHEMA)
     return conn
+
+
+def needs_rebuild(conn: sqlite3.Connection) -> bool:
+    """True when the store was made by an older Pompy and must be rebuilt from raw copies."""
+    return conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION
 
 
 def project_key(cwd: str) -> str:
@@ -90,7 +116,9 @@ def save(conn: sqlite3.Connection, item: Item) -> str:
     """Write one parsed item. Returns its kind name, for counting."""
     if isinstance(item, Prompt):
         cur = conn.execute(
-            "INSERT OR IGNORE INTO prompts VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            """INSERT OR IGNORE INTO prompts (uuid, session_id, ts, kind, source, text, own_text,
+                   char_len, word_len, has_paste, has_image, parent_uuid)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 item.uuid,
                 item.session_id,
@@ -98,6 +126,7 @@ def save(conn: sqlite3.Connection, item: Item) -> str:
                 item.kind,
                 item.source,
                 item.text,
+                item.own_text,
                 item.char_len,
                 item.word_len,
                 int(item.has_paste),
