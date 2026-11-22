@@ -1,6 +1,6 @@
 # Starter Plan: Phase 1 (MVP)
 
-Goal: by the end of Phase 1, Pompy ingests your Claude Code history into a durable store, computes usage and prompt-quality metrics, and shows a first insights dashboard as a private artifact.
+Goal: by the end of Phase 1, Pompy captures your Claude Code history in a permanent local store, recognizes your first patterns (time, models, keywords, prompt structure, friction), shows them in a private Pompy Dashboard inside Claude Code, and reviews each prompt as you send it (Pre-flight v0).
 
 Each step ends with a **"done when"** test and a **learning checkpoint**.
 
@@ -24,7 +24,7 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
   - `turns(id, session_id, ts_utc, role, model, effort, tool_calls, is_error)`
 - Filtering rules for a **real human prompt**: `type == "user"`, not `isMeta` / `isCompactSummary` / `isSidechain`, content isn't a `tool_result`, and it isn't injected `<...>` markup.
 - Hash project paths, so project names never appear in exports.
-- Make it idempotent: running it twice adds nothing.
+- Make it idempotent and **incremental**: remember each file's byte offset, and on later runs read only the new lines. Running it twice adds nothing, and a normal run takes well under a second.
 - **Done when:** fixture tests pass, and a real run prints counts (sessions, prompts, date range).
 
 ### Step 4: Usage analytics (`pompy stats`)
@@ -43,18 +43,42 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 - **Done when:** each prompt has a score and a friction flag, and the correlation shows up in `out/insights.json`.
 
 ### Step 7: Short-term memory object
-- A `WorkingSet` class holds the analysis window (e.g. last 14 days or last N sessions), the current question, and the retrieved snippets. Every insight function takes a `WorkingSet` as input.
-- **Done when:** insights can be generated for "all time" or "last 2 weeks" just by changing the working set.
+- A `WorkingSet` class holds the analysis window (**default: all-time**, since Pompy's first ingest), the current question, and the retrieved snippets. Every insight function takes a `WorkingSet` as input.
+- **Done when:** insights default to all-time, and an optional filter (e.g. "this month") lets you compare periods to see whether you're improving.
 - 🧠 *Learning:* this is the context window made explicit. Deciding what goes in it is the core skill of agent memory design.
 
 ### Step 8: Insights v0 + first artifact
-- Generate the top 3 habits to improve, each with: the evidence (counts), one real before/after rewrite (shown only in the private artifact), and a one-line tip.
-- Publish a **Data-type dashboard** artifact: usage charts, specificity trend, keywords, habits.
+- Generate the top 3 habits to improve, each with: the evidence (counts), one real before/after rewrite of your own prompt snippet (shown only in the private artifact), and a one-line tip.
+- Publish the **Pompy Dashboard**: a **private** artifact that opens in Claude Code's artifact pane, designed for a good experience:
+  - **Headline cards:** total prompts, average specificity score, favorite model, peak hour.
+  - **Keywords & themes:** your most-used words and topics, and how they change over time.
+  - **Model usage:** which models, how often, and for what kinds of prompts.
+  - **When you use AI:** an hour × weekday heatmap, in your time zone.
+  - **"Your top 3 habits"** with before/after snippet cards you can expand.
+  - **Memory Lab v0:** shows the working set (context window) Pompy built for its last analysis: what went in, what was left out, and why.
+  - A searchable list of your prompts with their scores. Works in light and dark mode and on phone width.
+- Data delivery: `pompy publish` sends the precomputed results to the artifact's database. We'll also test whether the artifact can read Pompy's output files directly from this project (`files` capability), which would remove the publish step.
+- **Done when:** you open the Pompy Dashboard in Claude Code and learn something new about your patterns.
+
+### Step 9: Pompy Pre-flight v0 (prompt review at send time)
+- A Claude Code `UserPromptSubmit` hook runs `pompy preflight` on every prompt you send.
+- It scores the prompt with the Step 6 rubric, compares it with your known habits, and writes a short Pompy note such as *"Score 2/7. You usually leave out what 'done' looks like. Consider adding acceptance criteria."*
+- **What Claude Code hooks allow** (checked against the hooks docs): a hook can't edit or rewrite your prompt, and can't open it for editing before it's sent. It can (a) add hidden context for Claude, or (b) block the prompt with a message you see, then you resend. So Pompy's note reaches you in these ways:
+  - **Default (non-blocking):** the prompt goes through immediately. The note appears as a **macOS notification** and in the Dashboard's "Pre-flight feed." Every score is also logged, so Pompy can track whether you're improving.
+  - **Strict mode (opt-in):** if a prompt scores below your threshold, Pompy blocks it and shows its suggestions. You revise and resend. A prefix such as `!!` skips the check for that prompt.
+  - **Whisper mode (opt-in, an experiment):** Pompy also passes Claude a little project context through `additionalContext`, so Claude itself fills the gaps Pompy spotted. Good for comparing coached and uncoached sessions.
+  - **True review before sending:** a `/pompy-check <draft>` command, and "Ask Pompy" in the Dashboard, for when you want feedback before committing to a prompt.
+- **Fast by design:** it reads only one small precomputed profile file. No database scan, no network, no AI call. Target: under 100 ms. The hook gets a 2-second timeout and **fails open**: if anything goes wrong, your prompt goes through untouched.
+- Session-end ingest: Claude Code gives `SessionEnd` hooks only about 1.5 seconds, so that hook just starts `pompy ingest` in the background and returns.
+- Project-aware advice ("your goal in this project is…") arrives in Phase 3, once long-term memory knows each project's goal.
+- **Done when:** every prompt you send in Claude Code gets a Pompy note, with no noticeable delay.
+- 🧠 *Learning:* this is a memory system serving an agent in real time. The hot path must be tiny, so the heavy thinking happens ahead of time.
 - **Done when:** you can open the Pompy artifact on claude.ai and learn something new about your prompting.
 
 ---
 
-## Decisions to make along the way
-1. **Claude API key** for LLM-written summaries and rewrites. Not needed until Step 8 (optional) or Phase 2.
-2. **Prompt snippets in the artifact**: yes or no? The artifact is private, but this is the one place raw text leaves the local store.
-3. **Analysis window** for "recent" insights (default: 14 days).
+## Decisions
+1. **Claude API key:** you'll provide it. It goes in a local `.env` file (git-ignored) and is needed for Claude-written summaries and rewrites (Step 8 and Phase 2).
+2. **Prompt snippets in the artifact:** ✅ **yes.** The artifact stays **private**. Snippets let you see real before/after examples of your own prompts.
+3. **Analysis window:** ✅ **all-time.** Pompy analyzes every chat it has ever captured, starting with everything still on disk at the first ingest, and never ages anything out. Shorter windows exist only as optional filters for trend comparisons (e.g. "this month vs. before").
+4. **Artifact experience:** a polished, easy-to-read page, not a raw data dump. See Step 8.

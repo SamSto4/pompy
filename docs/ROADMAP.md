@@ -1,97 +1,125 @@
 # Pompy Roadmap
 
-**North star:** Pompy helps you write sharper, more specific prompts for Claude, and builds a growing picture of how you like to work with AI.
+**What Pompy is:** an experimental lab for understanding how **agent memory** works (short-term/context window, episodic, long-term), built around **pattern recognition** on your own Claude history.
 
-**How it learns:** a local pipeline reads your Claude transcripts, turns them into **short-term → episodic → long-term memory**, and uses retrieval (RAG) over that memory to produce insights. A private Claude artifact shows those insights.
-
-Each phase teaches one memory concept and ships something you can use. Prompt-coaching insights come in Phase 1, not at the end.
+**What it's for:** while we explore memory, Pompy puts it to work as a prompting coach. It recognizes your patterns, knows what you're working on in each project, and reviews your prompts *at the moment you send them*.
 
 ---
 
-## Architecture at a glance
+## The three parts of Pompy
+
+| Part | Where you see it | What it does |
+|---|---|---|
+| **1. Memory pipeline** | Runs quietly on your Mac | Captures every chat, recognizes patterns, and builds the three memory layers |
+| **2. Pompy Dashboard** | A private artifact, opened in **Claude Code's artifact pane** | Your keywords, model usage, when you use AI, your patterns, plus a **Memory Lab** that shows what Pompy remembers in each layer |
+| **3. Pompy Pre-flight** | Inside Claude Code, every time you send a prompt | Scores the prompt, spots patterns ("you usually forget X here"), and suggests what to add based on your goal *in that project* |
 
 ```
- ~/.claude/projects/**/*.jsonl          (Claude Code transcripts; auto-deleted after ~30 days by default)
-              │  ingest (copy + parse, idempotent)
-              ▼
- ┌──────────────────────── local machine (never committed) ────────────────────────┐
- │  data/raw/        durable copy of transcripts                                    │
- │  data/pompy.db    SQLite: sessions · prompts · turns · metrics                   │
- │                                                                                  │
- │  SHORT-TERM  ── working set: the current analysis window + question in context   │
- │  EPISODIC    ── one "episode" per session: goal, outcome, friction, summary,     │
- │                 embedding, timestamp                                              │
- │  LONG-TERM   ── consolidated facts: preferences, habits, prompt weaknesses,      │
- │                 each with confidence + evidence links + decay                     │
- │                                                                                  │
- │  retrieval = keyword (FTS5) + vector similarity + recency × importance           │
- └──────────────────────────────────────────────────────────────────────────────────┘
-              │  export derived insights (aggregates + chosen examples)
-              ▼
-   Pompy artifact on claude.ai (private)  ── dashboard + "Ask Pompy" coach
+  you type a prompt in Claude Code
+            │
+            ▼
+  ┌─ Pompy Pre-flight (UserPromptSubmit hook, < 100 ms, no network) ─┐
+  │  reads: project profile + your long-term habits (precomputed)    │
+  │  shows: score · patterns spotted · "consider adding…"            │
+  │         → macOS notification + Dashboard feed (default)          │
+  │         → or blocks low scores so you can revise (strict mode)   │
+  │  tells Claude: relevant project context (whisper mode, optional) │
+  └──────────────────────────────────────────────────────────────────┘
+  (Hooks can't edit a prompt before it's sent; for true review before
+   sending, use /pompy-check or "Ask Pompy" in the Dashboard.)
+            │                                   ▲
+            ▼                                   │ precomputed profiles
+  Claude answers ── session ends ──► incremental ingest ──► memory layers
+                                                         (SQLite, local)
+                                                                │
+                                                                ▼
+                                        Pompy Dashboard (private artifact)
 ```
 
-**Why a local pipeline?** A published artifact can't read files on your Mac. Pompy does the heavy work locally, then pushes only the derived insights to the artifact. The artifact can store them in its database (`db` capability) and ask Claude questions directly from the page (`sample` capability).
+---
 
-**Scope:** Claude Code transcripts come first because they're already on disk and include the model, effort, timestamps, and prompts. A claude.ai data export is added in Phase 5.
+## Memory layers (the experiment)
+
+| Layer | Concept | In Pompy |
+|---|---|---|
+| **Short-term / context window** | What the agent is "thinking about" right now. It's limited, so what goes in matters. | The **working set** Pompy assembles for each job: for Pre-flight, the prompt you're sending + this project's profile + your top habits. The Memory Lab shows exactly what went in and why. |
+| **Episodic** | Specific past events, with time and outcome | One **episode per session**: what you were trying to do, how it went, how many corrections, which model |
+| **Long-term (semantic)** | General facts distilled from many episodes | **Your profile and project profiles**: preferences, habits, recurring gaps, each project's goal, all with confidence scores that strengthen or fade |
+
+Your history is analyzed **all-time**, from Pompy's first ingest onward. Nothing ages out.
+
+## Pattern recognition (the focus)
+
+| Pattern family | Example insight | Technique (what you'll learn) |
+|---|---|---|
+| **Time** | "You prompt most 10pm–1am; late-night prompts are 30% shorter." | Histograms, local-time bucketing |
+| **Model ↔ task** | "You pick Opus for planning, Sonnet for small edits." | Co-occurrence / contingency tables |
+| **Vocabulary & themes** | "Your top themes: UI design, APIs, agents." | TF-IDF, n-grams, then embedding **clustering** |
+| **Prompt structure** | "You rarely say what 'done' looks like." | Rule-based feature extraction → specificity score |
+| **Friction sequences** | "Prompts with no file reference lead to 2× more corrections." | Sequence analysis (prompt → next turn), correlation |
+| **Project patterns** | "In this project you're building X; prompts that mention Y go well." | Per-project aggregation + episode summaries |
+| **Change over time** | "Your average specificity rose from 2.1 to 3.4 this month." | Trend lines, before/after comparisons |
 
 ---
 
-## Phase 0: Foundations ✅ (this session)
-- Repo, roadmap, starter plan, privacy rules (`.gitignore` blocks all personal data).
-- **Concept:** what "memory" means for an agent (see [MEMORY_CONCEPTS.md](MEMORY_CONCEPTS.md)).
+## Phases
 
-## Phase 1: Ingest, short-term memory, first prompt insights (MVP)
-- `pompy ingest`: copy transcripts into a durable store before Claude Code's cleanup deletes them, then parse them into SQLite.
-- Separate **real human prompts** from noise: tool results, injected/meta content, compaction summaries, and sub-agent turns.
-- **Usage analytics:** model mix, effort levels, time of day and weekday (in your local timezone), session length, and prompt length.
-- **Keyword and topic analysis:** TF-IDF terms, recurring verbs ("fix", "make", "build"), slash commands.
-- **Prompt Specificity Score v0** (rule-based rubric): goal · context · constraints · acceptance criteria · output format · examples · file/code references.
-- **Friction signals:** what happens right after a prompt. Corrections ("no", "actually", "I meant"), interrupts, rejected tool calls, rephrasing.
-- **Short-term memory:** a working-set object (last N sessions plus the current question) that every analysis step reads from. This is the "context window" concept made explicit.
-- **Ships:** the first Pompy dashboard artifact, with usage charts, a specificity score, and your top 3 prompt habits with before/after rewrites.
+### Phase 0: Foundations ✅
+Repo, plan, privacy rules, memory study guide.
 
-## Phase 2: Episodic memory
-- Turn each session into an **episode**: intent, outcome (did it land?), number of corrections, model used, duration, and a 2–3 sentence summary written by Claude.
-- Embed episodes and prompts. Hybrid retrieval: SQLite FTS5 plus vector similarity.
-- **RAG query:** "show me past sessions like this one, and what went wrong."
-- **Concept:** episodic vs. semantic memory, plus the retrieval score *recency × relevance × importance* from the Generative Agents paper.
-- **Ships:** a "Similar past sessions" panel and per-episode drill-down.
+### Phase 1: Capture, patterns v1, Dashboard v1, Pre-flight v0
+- **Ingest:** copy chats into Pompy's permanent store, then parse real prompts out of the noise.
+- **Patterns v1:** time, models, keywords, prompt structure (specificity score), friction.
+- **Short-term memory:** an explicit working-set object, so you can see a context window being built.
+- **Dashboard v1** (private artifact in Claude Code): keywords, model usage, activity times, top habits with before/after snippets of your real prompts.
+- **Pre-flight v0:** a hook that scores each prompt as you send it and shows tips. Rule-based, instant, no AI call.
 
-## Phase 3: Long-term memory and consolidation
-- A **consolidation job** (like sleep for the brain) distills many episodes into durable facts:
-  - *Preferences:* "Prefers Opus for architecture, Sonnet for quick edits."
-  - *Habits:* "UI prompts rarely state acceptance criteria → 2.3× more corrections."
-  - *Strengths:* "Prompts that cite file paths succeed on the first try 80% of the time."
-- Each fact has a confidence score and links to its evidence. Facts are **reinforced** when new episodes agree with them and **decay** when they're not seen again.
-- **Reflection:** periodic higher-level insights built from lower-level facts.
-- **Ships:** a "Your AI profile" page that evolves over time.
+### Phase 2: Episodic memory
+- Each session becomes an episode: intent, outcome, friction, and a short summary written by Claude (Haiku, batched).
+- Embeddings plus hybrid search (keyword + meaning), and theme clustering.
+- **Pre-flight v1:** "Last time you asked something like this, it took 4 corrections because…"
+- **Memory Lab:** browse your episodes and see which ones get retrieved for a prompt, and why (recency × relevance × importance).
 
-## Phase 4: The coaching loop
-- **Ask Pompy** (in the artifact): paste a draft prompt. Pompy retrieves your relevant habits and past episodes, then rewrites the prompt and explains each change.
-- A weekly insight report: what improved, what to try next.
-- Track your specificity score over time and check whether coaching actually helps.
-- **Concept:** procedural memory, meaning Pompy learns which coaching styles work for *you*.
+### Phase 3: Long-term memory and consolidation
+- A consolidation job turns many episodes into durable facts: your preferences, habits, and **each project's goal**. Facts gain confidence when reinforced and decay when they stop showing up.
+- **Pre-flight v2:** project-aware advice, e.g. "Your goal in this project is X. Consider stating which page and the acceptance criteria."
+- **Memory Lab:** watch facts form, strengthen and fade over time.
 
-## Phase 5: More sources and automation
-- Import claude.ai conversations (Settings → Privacy → Export data).
-- Automatic ingest via a Claude Code `SessionEnd` hook or a scheduled job.
-- **Pompy as an MCP server**, so Claude itself can query your Pompy memory while you work. This closes the loop: your preferences shape future sessions directly.
+### Phase 4: Closing the loop
+- Measure whether Pre-flight advice helps: are your scores rising and corrections falling?
+- **Procedural memory:** Pompy learns which kinds of tips you actually act on.
+- "Ask Pompy" in the Dashboard: paste a draft and get a full rewrite.
+- Experiment: Pompy as an MCP server, so Claude can query your memory mid-session.
+
+### Phase 5: More sources
+- Import claude.ai chats (Settings → Privacy → Export data).
 
 ---
 
-## Tech choices (and why)
+## Efficiency: three speeds
+
+| Speed | When it runs | What it does | Cost |
+|---|---|---|---|
+| **Hot** | Every prompt you send | Rule-based scoring + reading one small precomputed profile file. No database scan, no network, no AI call. Target: **under 100 ms**. | Free |
+| **Warm** | When a session ends (hook starts it in the background; Claude Code allows the hook only ~1.5 s) | Incremental ingest that reads only **new lines** since last time (tracked by byte offset), updates stats, embeds new prompts | Free (local) |
+| **Cold** | Nightly, weekly or on demand | Claude writes episode summaries and runs consolidation. Uses Haiku for bulk work, the **Batch API** (50% cheaper) for the first backfill, and **prompt caching** for repeated instructions. | Cents |
+
+The Dashboard reads precomputed results, so opening it never triggers analysis.
+
+## Tech choices
 | Need | Choice | Notes |
 |---|---|---|
-| Language | Python 3.14, `venv` + `pip` | Already installed. |
-| Store | SQLite (+ FTS5) | A few hundred prompts doesn't need a vector database. One file, zero ops. |
-| Vectors | `sqlite-vec` or NumPy cosine search | Decide in Phase 2. Check that Python 3.14 wheels exist first. |
-| Embeddings | Local model (e.g. `fastembed`) **or** Voyage API | Phase 2 decision gate: verify 3.14 wheels. Fallback is a 3.12 venv. |
-| LLM steps | Claude API (`claude-haiku-5-5` for bulk summaries, `claude-sonnet-5-5` / `claude-opus-5-5` for consolidation and coaching) | API key from an env var, never committed. |
-| UI | Claude artifact (Data type dashboard → custom page with `db` + `sample`) | Private by default. |
+| Language | Python 3.14, `venv` + `pip` | Already installed |
+| Store | SQLite (+ FTS5 keyword search) | A few hundred to a few thousand prompts: one file, zero ops |
+| Vectors | `sqlite-vec` or NumPy | Phase 2 decision; check 3.14 wheels first |
+| Embeddings | Local model (e.g. `fastembed`) or Voyage API | Phase 2 decision gate |
+| AI steps | Claude API: `claude-haiku-5-5` (bulk), `claude-sonnet-5-5` / `claude-opus-5-5` (consolidation, rewrites) | Key in git-ignored `.env` |
+| Pre-flight | Claude Code `UserPromptSubmit` hook | Fast, local, non-blocking by default |
+| Dashboard | Private claude.ai artifact, opened in Claude Code's artifact pane | Data delivered via the artifact's `db`; reading project files directly via the `files` capability is an experiment |
 
-## Privacy rules (non-negotiable; the repo is public)
-1. Raw transcripts, the database, embeddings, and generated insights are **never committed**. `.gitignore` enforces this.
-2. Tests use **synthetic** fixture transcripts only.
-3. Docs and code never contain real prompts, project names, emails, or account IDs.
-4. Exports to the artifact default to aggregates. Prompt snippets are opt-in and stay in the private artifact.
+## Privacy rules (the repo is public)
+1. Raw chats, the database, embeddings and generated insights are **never committed**. `.gitignore` enforces this.
+2. Tests use **synthetic** chats only.
+3. Docs and code never contain real prompts, project names, emails or account IDs.
+4. Prompt snippets appear **only** in the private Pompy artifact.
+5. The Claude API key lives in a git-ignored `.env` file.

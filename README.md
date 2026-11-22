@@ -1,15 +1,11 @@
 # Pompy 🧠
 
-**A personal pattern recognizer for how you prompt Claude.**
+**An experimental lab for agent memory, built on pattern recognition over your own Claude history.**
 
-Pompy reads your Claude chat transcripts locally and builds a layered memory from them: short-term, episodic, and long-term. It then uses retrieval (RAG) over that memory to show you:
+Pompy reads your Claude chat transcripts locally and builds three memory layers from them: short-term (the context window), episodic, and long-term. It then puts that memory to work as a prompting coach:
 
-- **How you use Claude:** model mix, effort levels, when you work, session patterns
-- **What you ask about:** keywords, recurring themes, action verbs
-- **How specific your prompts are:** a specificity score, the friction it causes, before/after rewrites
-- **Your AI preferences:** a profile that grows over time
-
-Insights appear in a private Claude artifact.
+- **Pompy Dashboard** (a private artifact inside Claude Code): your keywords, model usage, when you use AI, your recurring patterns, and a Memory Lab that shows what Pompy remembers and why
+- **Pompy Pre-flight** (a Claude Code hook): reviews each prompt as you send it, spots your patterns, and suggests what to add based on your goal in that project
 
 > Status: **Phase 0, planning.** See the [Roadmap](docs/ROADMAP.md) and the [Starter Plan](docs/STARTER_PLAN.md).
 
