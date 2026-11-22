@@ -110,10 +110,83 @@ def test_friction_after_the_login_prompt(conn):
         "interrupt": True,
         "rejected": True,
         "rephrase": False,
+        "clarify": False,
         "any": True,
     }
-    assert not fr["b-u1"]["any"]  # "fix the bug" → next prompt just pastes the error
-    assert not fr["a-u17"]["any"]  # last prompt of the session
+    assert fr["b-u1"]["clarify"]  # "fix the bug" → Claude: "Which bug do you mean?"
+    assert not fr["a-u17"]["any"]  # Claude did it, then offered a next step: not friction
+
+
+# ── Clarifying questions: Claude had to ask before it could do the job ─────
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Which bug do you mean?",
+        "There are two clear buttons in the app.\n\n```tsx\n<Clear />\n```\n\nWhich one?",
+        "I can do this a few ways. What are we working with?",
+        "If so, could you paste the actual output (or just the URL line)?",
+        "Sure, what would you like to know?",
+        "1. **Scope**: landing page only?\n2. **Brand**: which name goes in the header?",
+    ],
+)
+def test_clarifying_replies(reply):
+    assert score.is_clarifying(reply)
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Added the link. Want me to add a test for it too?",
+        "Should I merge Steps 2 and 3 and start building, or keep them separate?",
+        "Done. Would you like me to commit?",
+        "Everything passes. Ready to push?",
+        "I fixed the nav bar. It now collapses on mobile.",
+        "Is this the right file? It's in src/app.",  # ends on a statement
+    ],
+)
+def test_offers_and_statements_are_not_clarifying(reply):
+    assert not score.is_clarifying(reply)
+
+
+def _session(conn, prompt, replies=(), tools=()):
+    """Add one synthetic exchange: a typed prompt, then Claude's replies and tool calls."""
+    conn.execute(
+        "INSERT INTO prompts (uuid, session_id, ts, kind, source, text, own_text) "
+        "VALUES ('x-u1', 'sess-x', '2026-05-01T10:00:00Z', 'typed', 'typed', ?, ?)",
+        (prompt, prompt),
+    )
+    for i, text in enumerate(replies):
+        conn.execute(
+            "INSERT INTO replies VALUES (?, 'msg_x', 'sess-x', ?, ?)",
+            (f"x-a{i}", f"2026-05-01T10:00:0{i + 1}Z", text),
+        )
+    for i, name in enumerate(tools):
+        conn.execute(
+            "INSERT INTO tool_uses VALUES (?, 'msg_x', 'sess-x', '2026-05-01T10:00:00Z', ?)",
+            (f"x-t{i}", name),
+        )
+
+
+def test_ask_user_question_tool_is_clarify(conn):
+    _session(conn, "redesign the homepage", tools=["Read", "AskUserQuestion"])
+    assert score.friction(conn)["x-u1"]["clarify"]
+
+
+def test_question_after_changing_files_is_not_clarify(conn):
+    _session(conn, "fix the login", ["Fixed it. Which browser were you using?"], ["Edit"])
+    assert not score.friction(conn)["x-u1"]["clarify"]
+
+
+def test_only_the_last_reply_counts(conn):
+    _session(conn, "fix the login", ["Which file? Never mind, found it.", "Done: login works."])
+    assert not score.friction(conn)["x-u1"]["clarify"]
+
+
+def test_questions_you_asked_for_are_not_friction(conn):
+    _session(conn, "plan the app, ask me any questions first", tools=["AskUserQuestion"])
+    assert not score.friction(conn)["x-u1"]["clarify"]
 
 
 def test_compute_scores_and_persists(conn):
@@ -122,10 +195,11 @@ def test_compute_scores_and_persists(conn):
     assert s["roles"] == {"task": 6, "correction": 1}
     assert s["score"]["distribution"][:6] == [1, 2, 1, 1, 0, 1]  # scores 5,1,1,3,2,0
     assert s["score"]["mean"] == 2.0
-    assert s["friction"]["overall"]["friction"] == 1 and s["friction"]["overall"]["n"] == 6
-    assert s["examples"][0]["uuid"] == "a-u1"
+    # a-u1 (correction, interrupt, rejected); b-u1 and b-u8 (Claude had to ask)
+    assert s["friction"]["overall"]["friction"] == 3 and s["friction"]["overall"]["n"] == 6
+    assert s["examples"][0]["uuid"] == "b-u8"  # lowest score first: "hello there, quick question…"
     rows = conn.execute("SELECT COUNT(*), SUM(friction) FROM prompt_scores").fetchone()
-    assert tuple(rows) == (7, 1)
+    assert tuple(rows) == (7, 3)
 
 
 def test_rescoring_replaces_rows(conn):

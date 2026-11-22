@@ -113,5 +113,13 @@
       "effort": null,
       "tool_calls": 0
     }
+  },
+  "replies": {
+    "_about": "Records with text Claude wrote (a-a2 is a tool call only, so it has no reply row).",
+    "a-a1": "I'll start by reading the theme file.",
+    "a-a3": "Got it, switching to the existing Button.",
+    "a-a4": "Added the forgot password link. Want me to add a test for it too?",
+    "b-a1": "Which bug do you mean?",
+    "b-a2": "Sure, what would you like to know?"
   }
 }

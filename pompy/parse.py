@@ -95,6 +95,8 @@ class Turn:
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
     tool_uses: list[tuple[str, str]] = field(default_factory=list)  # (tool_use_id, name)
+    record_uuid: str | None = None  # this record's uuid: one message can span several records
+    text: str = ""  # what Claude wrote in this record (text blocks only, no thinking)
 
 
 @dataclass
@@ -257,4 +259,10 @@ def _parse_assistant(r: dict, session_id: str) -> Turn | None:
             for i, b in enumerate(blocks)
             if b.get("type") == "tool_use"
         ],
+        record_uuid=r.get("uuid"),
+        text="\n\n".join(
+            b["text"].strip()
+            for b in blocks
+            if b.get("type") == "text" and isinstance(b.get("text"), str) and b["text"].strip()
+        ),
     )

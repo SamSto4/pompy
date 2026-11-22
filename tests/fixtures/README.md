@@ -28,3 +28,10 @@ Real transcripts are mostly not human prompts. These files deliberately mix the 
 | App-injected text | `textNotTyped: true` (wake notices, relays, PR commands) | ❌ |
 | Agent/system turns | `promptSource: system`, peer/task-notification origin, `host_synthetic`, `<wake>` | ❌ |
 | Sub-agent turns | `isSidechain`, or files in `subagents/` | ❌ |
+
+Claude's own text is kept too, one `replies` row per assistant record that has text (thinking and tool calls excluded). The replies also cover friction cases:
+
+| Reply after a prompt | Example | Friction? |
+|---|---|---|
+| Clarifying question | "fix the bug" → "Which bug do you mean?" | ✅ `clarify` |
+| Offer after the work | "Added the forgot password link. Want me to add a test for it too?" | ❌ |

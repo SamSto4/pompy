@@ -154,10 +154,18 @@ def test_reingest_after_rebuild_is_safe(env):
     conn2.close()
 
 
+def test_replies_keep_what_claude_said(env):
+    """Each assistant record with text becomes one reply row (thinking and tool calls excluded)."""
+    _, _, conn = env
+    rows = {r["record_uuid"]: r["text"] for r in conn.execute("SELECT * FROM replies")}
+    want = {k: v for k, v in EXPECTED["replies"].items() if not k.startswith("_")}
+    assert rows == want
+
+
 def test_rereading_a_file_never_double_counts(env):
     """Even a forced full re-read leaves every count unchanged (all writes are idempotent)."""
     source, data, conn = env
-    tables = ("prompts", "turns", "tool_uses", "events", "sessions")
+    tables = ("prompts", "turns", "tool_uses", "replies", "events", "sessions")
     before = {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in tables}
     conn.execute("DELETE FROM files")
     conn.commit()

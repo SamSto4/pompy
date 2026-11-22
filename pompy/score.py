@@ -244,8 +244,51 @@ _PROBLEM_RE = re.compile(
 REPHRASE_WINDOW_MIN = 10
 REPHRASE_SIMILARITY = 0.6
 
+# Claude had to ask you something before it could do the job: the clearest sign that a prompt
+# left a gap. Two forms: the AskUserQuestion tool, or a reply that ends on a clarifying question
+# while Claude changed nothing. Offers after the work ("Want me to commit?") don't count.
+ASK_TOOLS = frozenset({"AskUserQuestion"})
+WORK_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit", "Bash"})
+_CLARIFY_RE = re.compile(
+    r"\bwhich\b|\bwhere (is|are|do|does|should|can)\b|\bwho\b"
+    r"|\bwhat (do|did|would) you (mean|like|want|have in mind)\b|\b(do|did) you mean\b"
+    r"|\bwhat (are|is) (we|you) (working|talking) (with|about)\b"
+    r"|\b(could|can|would) you (paste|share|tell|clarify|send|point|describe|confirm|show|"
+    r"give|explain|say|specify|provide)\b"
+    r"|\bwhat('?s| is) the (exact|actual|full|error|url|path|name|file)\b",
+    re.IGNORECASE,
+)
+_OFFER_RE = re.compile(
+    r"^(want me|do you want me|would you like me|should i|shall i|ready|sound good|"
+    r"does (that|this) (look|sound)|ok(ay)?\b|any other)",
+    re.IGNORECASE,
+)
+# You asked for questions yourself ("ask me anything first"): Claude asking is the plan working.
+_INVITES_QUESTIONS_RE = re.compile(
+    r"\b(ask me|re-?ask|any questions|questions (first|before)|clarifying questions|"
+    r"interview me)\b",
+    re.IGNORECASE,
+)
+_SENTENCE_END_RE = re.compile(r"(?<=[.!?:])\s+|\n+")
 
-FRICTION_KINDS = ("correction", "problem", "interrupt", "rejected", "rephrase")
+
+def final_question(reply: str) -> str | None:
+    """The question a reply ends on, or None if it doesn't end on one."""
+    text = reply.strip().rstrip("*_` )\"'")
+    if not text.endswith("?"):
+        return None
+    sentences = [s for s in _SENTENCE_END_RE.split(text) if s.strip()]
+    last = sentences[-1].strip() if sentences else text
+    return re.sub(r"^[\s>*_`#\-\d.)]+", "", last)  # drop list markers and markdown
+
+
+def is_clarifying(reply: str) -> bool:
+    """Does this reply end by asking you to fill a gap (not offering a next step)?"""
+    q = final_question(reply)
+    return bool(q and not _OFFER_RE.search(q) and _CLARIFY_RE.search(q))
+
+
+FRICTION_KINDS = ("correction", "problem", "interrupt", "rejected", "rephrase", "clarify")
 
 
 def is_correction(own_text: str) -> bool:
@@ -269,6 +312,8 @@ def friction(conn: sqlite3.Connection) -> dict[str, dict]:
     - problem: your next prompt reports something broken ("why am I getting a 404")
     - interrupt / rejected: you stopped Claude or rejected one of its tool calls
     - rephrase: your next prompt is nearly the same request again, within 10 minutes
+    - clarify: Claude had to ask you something (AskUserQuestion, or a reply ending on a
+      clarifying question while it changed nothing), unless you asked it to ask
     """
     conn.row_factory = sqlite3.Row
     prompts = conn.execute(
@@ -278,6 +323,14 @@ def friction(conn: sqlite3.Connection) -> dict[str, dict]:
     events: dict[str, list] = defaultdict(list)
     for e in conn.execute("SELECT session_id, ts, kind FROM events WHERE ts IS NOT NULL"):
         events[e["session_id"]].append((e["ts"], e["kind"]))
+    tools: dict[str, list] = defaultdict(list)
+    for t in conn.execute("SELECT session_id, ts, name FROM tool_uses WHERE ts IS NOT NULL"):
+        tools[t["session_id"]].append((t["ts"], t["name"]))
+    replies: dict[str, list] = defaultdict(list)
+    for r in conn.execute(
+        "SELECT session_id, ts, text FROM replies WHERE ts IS NOT NULL ORDER BY session_id, ts"
+    ):
+        replies[r["session_id"]].append((r["ts"], r["text"]))
 
     by_session: dict[str, list] = defaultdict(list)
     for p in prompts:
@@ -304,12 +357,18 @@ def friction(conn: sqlite3.Connection) -> dict[str, dict]:
                 )
                 >= REPHRASE_SIMILARITY
             )
+            used = {name for ts, name in tools[sid] if p["ts"] <= ts < end}
+            said = [text for ts, text in replies[sid] if p["ts"] <= ts < end]
+            clarify = not _INVITES_QUESTIONS_RE.search(p["own_text"]) and bool(
+                used & ASK_TOOLS or (said and not used & WORK_TOOLS and is_clarifying(said[-1]))
+            )
             flags = {
                 "correction": correction,
                 "problem": problem,
                 "interrupt": "interrupt" in between,
                 "rejected": "tool_rejected" in between,
                 "rephrase": rephrase,
+                "clarify": clarify,
             }
             result[p["uuid"]] = {**flags, "any": any(flags.values())}
     return result

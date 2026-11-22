@@ -1,6 +1,6 @@
 """Unit tests for single-record rules found in real data after the fixtures were written."""
 
-from pompy.parse import Prompt, parse_record
+from pompy.parse import Prompt, Turn, parse_record
 
 
 def _user(content, **extra):
@@ -42,3 +42,26 @@ def test_paste_closing_tag_with_id_is_removed_from_own_words():
     assert prompt.own_text == "why does this happen"
     assert "KeyError" in prompt.text and "pasted_content" not in prompt.text
     assert prompt.has_paste and prompt.word_len == 4
+
+
+def test_assistant_reply_text_skips_thinking_and_tool_calls():
+    record = {
+        "type": "assistant",
+        "uuid": "a1",
+        "sessionId": "s1",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "message": {
+            "id": "msg_1",
+            "model": "claude-opus-5-5",
+            "content": [
+                {"type": "thinking", "thinking": "private reasoning"},
+                {"type": "text", "text": "  Which file?  "},
+                {"type": "tool_use", "id": "t1", "name": "Read", "input": {}},
+                {"type": "text", "text": "Or the other one?"},
+            ],
+        },
+    }
+    [turn] = [i for i in parse_record(record, "s1") if isinstance(i, Turn)]
+    assert turn.record_uuid == "a1"
+    assert turn.text == "Which file?\n\nOr the other one?"
+    assert turn.tool_uses == [("t1", "Read")]

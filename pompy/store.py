@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS prompt_scores (  -- derived by `pompy score`; recompu
     f_goal INTEGER, f_context INTEGER, f_constraints INTEGER, f_done INTEGER,
     f_format INTEGER, f_example INTEGER, f_reference INTEGER,
     fr_correction INTEGER, fr_problem INTEGER, fr_interrupt INTEGER, fr_rejected INTEGER,
-    fr_rephrase INTEGER,
+    fr_rephrase INTEGER, fr_clarify INTEGER,
     friction    INTEGER,
     rubric_version INTEGER
 );
@@ -72,6 +72,13 @@ CREATE TABLE IF NOT EXISTS tool_uses (  -- one row per tool call, so re-reading 
     ts          TEXT,
     name        TEXT
 );
+CREATE TABLE IF NOT EXISTS replies (  -- what Claude said back, one row per record with text
+    record_uuid TEXT PRIMARY KEY,
+    message_id  TEXT NOT NULL,
+    session_id  TEXT NOT NULL,
+    ts          TEXT,
+    text        TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS events (
     uuid       TEXT NOT NULL,
     session_id TEXT NOT NULL,
@@ -100,13 +107,14 @@ CREATE INDEX IF NOT EXISTS idx_prompts_session ON prompts(session_id);
 CREATE INDEX IF NOT EXISTS idx_prompts_ts ON prompts(ts);
 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id);
 CREATE INDEX IF NOT EXISTS idx_tool_uses_message ON tool_uses(message_id);
+CREATE INDEX IF NOT EXISTS idx_replies_session ON replies(session_id, ts);
 """
     + PROMPT_SCORES_SCHEMA
 )
 
 
 # Bump when the schema OR the parsing rules change: older stores are rebuilt from data/raw/.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -129,7 +137,11 @@ def needs_rebuild(conn: sqlite3.Connection) -> bool:
 
 
 def project_key(cwd: str) -> str:
-    return hashlib.sha1(cwd.encode()).hexdigest()[:12]
+    return _digest(cwd)
+
+
+def _digest(s: str) -> str:
+    return hashlib.sha1(s.encode()).hexdigest()[:12]
 
 
 def save(conn: sqlite3.Connection, item: Item) -> str:
@@ -187,6 +199,12 @@ def save(conn: sqlite3.Connection, item: Item) -> str:
                 for tid, name in item.tool_uses
             ],
         )
+        if item.text:
+            key = item.record_uuid or f"{item.message_id}:{_digest(item.text)}"
+            conn.execute(
+                "INSERT OR IGNORE INTO replies VALUES (?,?,?,?,?)",
+                (key, item.message_id, item.session_id, item.ts, item.text),
+            )
         return "turn"
     if isinstance(item, Event):
         cur = conn.execute(
@@ -229,5 +247,5 @@ def save(conn: sqlite3.Connection, item: Item) -> str:
 
 def forget_session(conn: sqlite3.Connection, session_id: str) -> None:
     """Drop everything derived from one transcript (used when a file must be re-read)."""
-    for table in ("prompts", "turns", "tool_uses", "events"):
+    for table in ("prompts", "turns", "tool_uses", "replies", "events"):
         conn.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
