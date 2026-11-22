@@ -39,6 +39,26 @@ def _cmd_ingest(args: argparse.Namespace) -> None:
         print(f"  from {s['first_prompt'][:10]} to {s['last_prompt'][:10]} (UTC)")
 
 
+def _cmd_stats(args: argparse.Namespace) -> None:
+    import json
+    from zoneinfo import ZoneInfo
+
+    from pompy import stats, store
+
+    conn = store.connect(config.data_dir() / "pompy.db")
+    result = stats.compute(conn, ZoneInfo(args.tz) if args.tz else None)
+    conn.close()
+    if not result["totals"]["prompts"]:
+        print("No prompts yet. Run `pompy ingest` first.")
+        return
+    out = config.out_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "stats.json").write_text(json.dumps(result, indent=2))
+    print(json.dumps(result, indent=2) if args.json else stats.render(result))
+    if not args.json:
+        print(f"\n(saved to {out / 'stats.json'})")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="pompy", description=__doc__)
     parser.add_argument("--version", action="version", version=f"pompy {__version__}")
@@ -52,7 +72,10 @@ def main() -> None:
     p_ingest.add_argument("--quiet", action="store_true", help="print nothing (for hooks)")
     p_ingest.set_defaults(func=_cmd_ingest)
 
-    sub.add_parser("stats", help="(Step 4) usage analytics")
+    p_stats = sub.add_parser("stats", help="usage analytics: models, effort, time, lengths")
+    p_stats.add_argument("--tz", help="time zone, e.g. America/New_York (default: this Mac's)")
+    p_stats.add_argument("--json", action="store_true", help="print the raw JSON")
+    p_stats.set_defaults(func=_cmd_stats)
 
     args = parser.parse_args()
     if args.command is None:

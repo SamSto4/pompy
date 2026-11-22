@@ -28,8 +28,10 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 - Make it idempotent and **incremental**: remember each file's byte offset, and on later runs read only the new lines. Running it twice adds nothing, and a normal run takes well under a second.
 - **Done when:** fixture tests pass, and a real run prints counts (sessions, prompts, date range).
 
-### Step 4: Usage analytics (`pompy stats`)
+### Step 4: Usage analytics (`pompy stats`) ✅
 - Model mix (by turns and by session), effort levels, active hours and weekdays (**converted from UTC to local time**), session length, prompt length distribution.
+- Also: models per month, model switching within sessions, *active* session minutes (pauses over 30 min don't count), a weekday × hour grid for the Dashboard heatmap, surfaces (CLI, VS Code, desktop), top slash commands, and the tools Claude used.
+- `--tz America/New_York` overrides the time zone; `--json` prints the raw data.
 - **Done when:** `pompy stats` prints a readable summary and writes `out/stats.json`.
 
 ### Step 5: Keywords and themes
