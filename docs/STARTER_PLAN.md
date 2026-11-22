@@ -16,13 +16,14 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 - **Done when:** fixtures cover every record type the parser must keep or skip.
 - 🧠 *Learning:* real agent logs are mostly **not** human prompts. Knowing what to filter out is half of memory hygiene.
 
-### Step 3: `pompy ingest` (the durable store)
+### Step 3: `pompy ingest` (the durable store) ✅
 - Find `~/.claude/projects/**/*.jsonl`. Copy any new or changed files into `data/raw/` (content-hashed), because Claude Code deletes old transcripts after about 30 days by default.
-- Parse into `data/pompy.db`:
-  - `sessions(id, project_hash, started_at, ended_at, entrypoint, title)`
-  - `prompts(id, session_id, ts_utc, text, source, char_len, word_len)`
-  - `turns(id, session_id, ts_utc, role, model, effort, tool_calls, is_error)`
-- Filtering rules for a **real human prompt**: `type == "user"`, not `isMeta` / `isCompactSummary` / `isSidechain`, content isn't a `tool_result`, and it isn't injected `<...>` markup.
+- Parse into `data/pompy.db` (see `pompy/store.py`):
+  - `sessions`: project (hashed key + local name), entrypoint, title, first/last time, sub-agent count
+  - `prompts`: your real prompts: kind (typed, command, bash, suggestion), text, length, paste/image flags
+  - `turns` + `tool_uses`: Claude's replies: model, effort, tokens, which tools it called
+  - `events`: friction signals: interrupts, rejected tool calls, compactions
+- Filtering rules for a **real human prompt**: see the table in `tests/fixtures/README.md`. Real data taught us three extra rules: resumed sessions copy earlier records (de-duplicate by record id), `textNotTyped` marks app-injected text, and browser-extension instructions are injected blocks.
 - Hash project paths, so project names never appear in exports.
 - Make it idempotent and **incremental**: remember each file's byte offset, and on later runs read only the new lines. Running it twice adds nothing, and a normal run takes well under a second.
 - **Done when:** fixture tests pass, and a real run prints counts (sessions, prompts, date range).
