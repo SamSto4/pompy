@@ -74,13 +74,16 @@ Repo, plan, privacy rules, memory study guide.
 - **Dashboard v1** (private artifact in Claude Code): keywords, model usage, activity times, top habits with before/after snippets of your real prompts.
 - **Pre-flight v0:** a hook that scores each prompt as you send it and shows tips. Rule-based, instant, no AI call.
 
-### Phase 2: Episodic memory
+### Phase 2: Episodic memory + hybrid retrieval
+- Built to the hybrid RAG design in [RAG_ARCHITECTURE.md](RAG_ARCHITECTURE.md): context-aware excerpts, keyword + vector indexes, merge and rerank, and source references back to the original.
+- Summaries follow the **three representations** rule: original source, searchable excerpts (the main evidence), and short episode cards (for locating and filtering only).
 - Each session becomes an episode: intent, outcome, friction, and a short summary written by Claude (Haiku, batched).
 - Embeddings plus hybrid search (keyword + meaning), and theme clustering.
 - **Pre-flight v1:** "Last time you asked something like this, it took 4 corrections because…"
 - **Memory Lab:** browse your episodes and see which ones get retrieved for a prompt, and why (recency × relevance × importance).
 
 ### Phase 3: Long-term memory and consolidation
+- A hypothesis agent compares cases, looks for supporting **and** contradicting evidence, and stores each pattern with its evidence (layers 6–8 of the RAG architecture).
 - A consolidation job turns many episodes into durable facts: your preferences, habits, and **each project's goal**. Facts gain confidence when reinforced and decay when they stop showing up.
 - **Pre-flight v2:** project-aware advice, e.g. "Your goal in this project is X. Consider stating which page and the acceptance criteria."
 - **Memory Lab:** watch facts form, strengthen and fade over time.
@@ -91,8 +94,10 @@ Repo, plan, privacy rules, memory study guide.
 - "Ask Pompy" in the Dashboard: paste a draft and get a full rewrite.
 - Experiment: Pompy as an MCP server, so Claude can query your memory mid-session.
 
-### Phase 5: More sources
-- Import claude.ai chats (Settings → Privacy → Export data).
+### Phase 5: All your material (source adapters)
+- Pompy's memory grows to cover everything: Claude chats, notes and documents, and business records, each through a source adapter (see [RAG_ARCHITECTURE.md](RAG_ARCHITECTURE.md#sources-everything-through-source-adapters--decided)).
+- Order: claude.ai export → a documents folder (Markdown, text, PDF, Word) → business records (CSV and spreadsheets).
+- Business-record snippets stay out of the artifact unless you allow a source.
 
 ---
 
