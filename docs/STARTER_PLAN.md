@@ -66,18 +66,20 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 - First real comparison: this month's prompts are shorter (median 7 vs 13 words) and less specific (1.32 vs 1.74), mostly because examples (6% vs 26%) and concrete references (10% vs 21%) dropped.
 - 🧠 *Learning:* this is the context window made explicit. Deciding what goes in it (the window, the budget, the per-chat cap) and recording what was left out is the core skill of agent memory design.
 
-### Step 8: Insights v0 + first artifact
-- Generate the top 3 habits to improve, each with: the evidence (counts), one real before/after rewrite of your own prompt snippet (shown only in the private artifact), and a one-line tip.
-- Publish the **Pompy Dashboard**: a **private** artifact that opens in Claude Code's artifact pane, designed for a good experience:
-  - **Headline cards:** total prompts, average specificity score, favorite model, peak hour.
-  - **Keywords & themes:** your most-used words and topics, and how they change over time.
-  - **Model usage:** which models, how often, and for what kinds of prompts.
-  - **When you use AI:** an hour × weekday heatmap, in your time zone.
-  - **"Your top 3 habits"** with before/after snippet cards you can expand.
-  - **Memory Lab v0:** shows the working set (context window) Pompy built for its last analysis: what went in, what was left out, and why.
-  - A searchable list of your prompts with their scores. Works in light and dark mode and on phone width.
-- Data delivery: `pompy publish` sends the precomputed results to the artifact's database. We'll also test whether the artifact can read Pompy's output files directly from this project (`files` capability), which would remove the publish step.
-- **Done when:** you open the Pompy Dashboard in Claude Code and learn something new about your patterns.
+### Step 8: Insights v0 + the Pompy Dashboard ✅
+- `pompy publish` **builds** the dashboard in `out/dashboard/` (page + scripts + `data.json`). Nothing leaves your Mac until you ask Claude to publish that folder to your **private** artifact (it updates the same artifact each time).
+- **Data bundle:** all-time stats, keywords, scores, the top 3 habits, this-month-vs-before, the last working set, and one row per prompt. Every per-prompt fact (role, score, features, friction, session opener, local date) is decided in Python; the page only filters and aggregates. Only your own words are bundled (pastes excluded), shortened to 600 characters, and passed through a redaction pass (key-like values, emails, home paths, ids). Chats are numbered instead of named by id. Claude's replies are not bundled, except the short question Claude asked when a prompt is flagged "Claude had to ask".
+- **Top 3 habits:** the rubric parts your task prompts include least often (rarity is solid evidence; friction differences are shown but don't rank, since they rest on few prompts). Each cites real prompts of yours.
+- **The page** (a custom artifact, since the ready-made Data type can't ask Claude):
+  - **Overview:** headline numbers, hour × weekday heatmap, prompts and specificity by month (with the gap months explained), score distribution, rubric coverage, words and phrases, opening style, models, projects.
+  - **Habits:** each habit with evidence, a tip, and a real "before" prompt; **Rewrite with Claude** produces the "after" and scores it (saved privately).
+  - **Prompts:** search and filter every prompt; open one to see why Pompy scored it that way, and **correct Pompy** (score too high/low, role wrong, friction missed/false alarm). Corrections are saved privately (verdicts only, no prompt text, tagged with the rubric version) and can be copied out as JSON to recalibrate the rules.
+  - **Ask Pompy:** score a draft as you type (Pre-flight in the browser), see which habits it repeats, similar past prompts and how they went, and **Improve with Claude**.
+  - **Memory Lab:** the three memory layers, the last working set from `pompy context` (what went in, what was left out, why), and an interactive working-set builder (question, window, token budget, per-chat cap).
+  - **Compare:** any two periods side by side, matching `pompy compare`.
+- **One scorer, two languages:** the browser scorer (`pompy/dashboard/scorer.js`) gets its regexes and word lists from Python, and `tests/test_scorer_parity.py` runs it in Node against `score_text`. On real data it agreed on all 333 prompts.
+- **Not done:** the `files` capability (reading `out/` straight from the project, which would remove the publish step) was not tested: it needs the Claude Code project's id. Phone-width layout is designed for (single column under 560px) but was not checked in a real narrow window.
+- 🧠 *Learning:* a dashboard is a **snapshot of long-term memory** taken at one moment, and the corrections you make on it are **human feedback** that the next version of the rules learns from.
 
 ### Step 9: Pompy Pre-flight v0 (prompt review at send time)
 - A Claude Code `UserPromptSubmit` hook runs `pompy preflight` on every prompt you send.

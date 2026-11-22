@@ -175,6 +175,21 @@ def _cmd_context(args: argparse.Namespace) -> None:
         print(f"\n(saved to {out / 'working_set.json'}: the Memory Lab reads this)")
 
 
+def _cmd_publish(args: argparse.Namespace) -> None:
+    from zoneinfo import ZoneInfo
+
+    from pompy import publish
+
+    conn = _open_store()
+    out = config.out_dir() / "dashboard"
+    bundle = publish.build(conn, out, ZoneInfo(args.tz) if args.tz else None)
+    conn.close()
+    size = (out / "data.json").stat().st_size / 1024
+    print(f"Built the Pompy Dashboard in {out}")
+    print(f"  {bundle['meta']['prompts']} prompts, data bundle {size:.0f} KB")
+    print("  Nothing has left your Mac. Ask Claude to publish it to your private artifact.")
+
+
 def _cmd_check(args: argparse.Namespace) -> None:
     from pompy import score
 
@@ -247,6 +262,12 @@ def main() -> None:
             p.add_argument("--period", help=f"analysis window (default: all). {PERIOD_HELP}")
         if p is not p_search:
             p.add_argument("--project", help="only this project (exact name, else contains)")
+
+    p_publish = sub.add_parser(
+        "publish", help="build the Pompy Dashboard page + data in out/dashboard/ (local only)"
+    )
+    p_publish.add_argument("--tz", help="time zone for dates (default: this Mac's)")
+    p_publish.set_defaults(func=_cmd_publish)
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")

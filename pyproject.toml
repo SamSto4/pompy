@@ -19,6 +19,9 @@ pompy = "pompy.cli:main"
 [tool.setuptools.packages.find]
 include = ["pompy*"]
 
+[tool.setuptools.package-data]
+pompy = ["dashboard/*.html", "dashboard/*.js"]
+
 [tool.ruff]
 line-length = 100
 
