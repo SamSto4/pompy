@@ -12,6 +12,8 @@ import statistics
 from collections import Counter, defaultdict
 from datetime import datetime, tzinfo
 
+from pompy.working_set import WorkingSet
+
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 WORD_BUCKETS = [(1, 5), (6, 20), (21, 50), (51, 150), (151, None)]
 IDLE_GAP_MINUTES = 30  # a pause longer than this ends an "active stretch" of a session
@@ -22,7 +24,16 @@ def parse_ts(ts: str, tz: tzinfo | None) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(tz)
 
 
-def compute(conn: sqlite3.Connection, tz: tzinfo | None = None) -> dict:
+def compute(conn: sqlite3.Connection, ws: WorkingSet | None = None) -> dict:
+    """Usage analytics over the working set's window (default: all-time)."""
+    ws = ws or WorkingSet()
+    with ws.lens(conn):
+        result = _compute(conn, ws.tz)
+    result["window"] = ws.window.label
+    return result
+
+
+def _compute(conn: sqlite3.Connection, tz: tzinfo | None = None) -> dict:
     conn.row_factory = sqlite3.Row
     prompts = conn.execute(
         "SELECT p.*, s.project_name, s.project_key, s.entrypoint FROM prompts p "

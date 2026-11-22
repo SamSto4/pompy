@@ -9,6 +9,7 @@ import pytest
 
 from pompy import score
 from pompy.ingest import ingest
+from pompy.working_set import WorkingSet
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -190,7 +191,7 @@ def test_questions_you_asked_for_are_not_friction(conn):
 
 
 def test_compute_scores_and_persists(conn):
-    s = score.compute(conn, ZoneInfo("UTC"))
+    s = score.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))
     assert s["typed_prompts"] == 7
     assert s["roles"] == {"task": 6, "correction": 1}
     assert s["score"]["distribution"][:6] == [1, 2, 1, 1, 0, 1]  # scores 5,1,1,3,2,0
@@ -203,8 +204,8 @@ def test_compute_scores_and_persists(conn):
 
 
 def test_rescoring_replaces_rows(conn):
-    score.compute(conn, ZoneInfo("UTC"))
-    score.compute(conn, ZoneInfo("UTC"))
+    score.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))
+    score.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))
     assert conn.execute("SELECT COUNT(*) FROM prompt_scores").fetchone()[0] == 7
 
 

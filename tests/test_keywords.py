@@ -11,6 +11,7 @@ from pompy import keywords, store
 from pompy.ingest import ingest
 from pompy.parse import Prompt, SessionInfo
 from pompy.search import search, to_fts_query
+from pompy.working_set import WorkingSet
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -27,7 +28,7 @@ def conn(tmp_path):
 
 @pytest.fixture
 def kw(conn):
-    return keywords.compute(conn, ZoneInfo("UTC"))
+    return keywords.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))
 
 
 def _terms(result):
@@ -150,10 +151,10 @@ def test_contractions_and_hyphens_stay_one_phrase(conn):
 
 def test_phrases_count_prompts_not_repetitions(conn):
     _add_prompt(conn, "sess-z", "/home/dev/demo-app", "z-1", "nav bar nav bar nav bar nav bar")
-    kw = keywords.compute(conn, ZoneInfo("UTC"))
+    kw = keywords.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))
     assert "nav bar" not in {p["phrase"] for p in kw["top_phrases"]}  # 1 prompt only
     _add_prompt(conn, "sess-z", "/home/dev/demo-app", "z-2", "the nav bar overlaps the logo")
-    kw = keywords.compute(conn, ZoneInfo("UTC"))
+    kw = keywords.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))
     assert {"phrase": "nav bar", "prompts": 2} in kw["top_phrases"]
 
 

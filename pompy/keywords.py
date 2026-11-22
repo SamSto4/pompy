@@ -20,6 +20,7 @@ from collections import Counter, defaultdict
 from datetime import tzinfo
 
 from pompy.stats import parse_ts
+from pompy.working_set import WorkingSet
 
 # fmt: off
 STOPWORDS = frozenset("""
@@ -199,7 +200,16 @@ def distinctive_terms(groups: dict[str, Counter], top: int = 8, min_count: int =
     return result
 
 
-def compute(conn: sqlite3.Connection, tz: tzinfo | None = None) -> dict:
+def compute(conn: sqlite3.Connection, ws: WorkingSet | None = None) -> dict:
+    """Keywords, phrases and opening style over the working set's window (default: all-time)."""
+    ws = ws or WorkingSet()
+    with ws.lens(conn):
+        result = _compute(conn, ws.tz)
+    result["window"] = ws.window.label
+    return result
+
+
+def _compute(conn: sqlite3.Connection, tz: tzinfo | None = None) -> dict:
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT p.uuid, p.session_id, p.ts, p.own_text, s.project_key, s.project_name "

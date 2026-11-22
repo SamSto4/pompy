@@ -15,14 +15,16 @@ from pompy.stats import parse_ts
 _PART_RE = re.compile(r"[^\W_]+")
 
 
-def to_fts_query(query: str) -> str:
+def to_fts_query(query: str, match_any: bool = False) -> str:
     """Turn free text into a safe FTS5 query: every word must match (implicit AND).
 
     Each whitespace-separated chunk becomes one phrase, so "it's" must appear as "it s"
     (adjacent) and "co-author" as "co author", not as two unrelated words anywhere.
+    With match_any, any word may match (OR), and BM25 ranks prompts matching more of them
+    higher: right for gathering evidence, where a near miss is still useful.
     """
     phrases = (" ".join(_PART_RE.findall(chunk)) for chunk in query.split())
-    return " ".join(f'"{p}"' for p in phrases if p)
+    return (" OR " if match_any else " ").join(f'"{p}"' for p in phrases if p)
 
 
 def project_keys(conn: sqlite3.Connection, project: str) -> list[str]:
@@ -42,8 +44,9 @@ def search(
     project: str | None = None,
     raw: bool = False,
     tz: tzinfo | None = None,
+    match_any: bool = False,
 ) -> list[dict]:
-    fts_query = query if raw else to_fts_query(query)
+    fts_query = query if raw else to_fts_query(query, match_any)
     if not fts_query:
         return []
     conn.row_factory = sqlite3.Row

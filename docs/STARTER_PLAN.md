@@ -57,10 +57,14 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 - **Clarify signal added:** Pompy now stores Claude's reply text (schema v4, auto-rebuild), so it sees when Claude had to ask. Friction coverage went from 8% to 18% of task prompts, and clarify became the largest kind. The same reply text feeds Phase 2's exchange excerpts. Limit: some AskUserQuestion calls are blockers (a missing app, a full disk) rather than gaps in the prompt.
 - 🧠 *Learning:* a pattern is only as good as its signal. The first friction detector caught 3.8% of prompts; calibrating it against real follow-ups more than doubled that, and reading Claude's side of the conversation doubled it again. Always check what a detector misses before trusting its correlations.
 
-### Step 7: Short-term memory object
-- A `WorkingSet` class holds the analysis window (**default: all-time**, since Pompy's first ingest), the current question, and the retrieved snippets. Every insight function takes a `WorkingSet` as input.
-- **Done when:** insights default to all-time, and an optional filter (e.g. "this month") lets you compare periods to see whether you're improving.
-- 🧠 *Learning:* this is the context window made explicit. Deciding what goes in it is the core skill of agent memory design.
+### Step 7: Short-term memory object ✅
+- `pompy/working_set.py`: a `WorkingSet` holds the analysis **window** (default **all-time**; or a period: `this-month`, `30d`, `2026-10`, `2026-09..2026-10`, plus an optional project), the current **question**, and the retrieved **snippets**, within an estimated token **budget**. `stats`, `keywords` and `score` all take a `WorkingSet`.
+- **The lens:** the window is applied as temporary SQL views named like the real tables, so every existing query sees only in-window rows without being rewritten. Periods follow your local calendar.
+- **Two rules kept by tests:** a windowed run never overwrites the all-time results (`prompt_scores`, `out/*.json`), and facts about one prompt (its friction, whether it opened a session) always come from full memory, so a prompt gets the same verdict in every window.
+- `--period` / `--project` on `stats`, `keywords`, `score` and `search`. `pompy compare this-month [before|<period>]` shows two working sets side by side, flagging periods with too few prompts.
+- `pompy context "<question>"` fills a working set: the best keyword matches (any word may match, best first), at most 2 per chat, until the budget runs out. It lists what went in, what was left out and why, and writes `out/working_set.json` for the Memory Lab (Step 8).
+- First real comparison: this month's prompts are shorter (median 7 vs 13 words) and less specific (1.32 vs 1.74), mostly because examples (6% vs 26%) and concrete references (10% vs 21%) dropped.
+- 🧠 *Learning:* this is the context window made explicit. Deciding what goes in it (the window, the budget, the per-chat cap) and recording what was left out is the core skill of agent memory design.
 
 ### Step 8: Insights v0 + first artifact
 - Generate the top 3 habits to improve, each with: the evidence (counts), one real before/after rewrite of your own prompt snippet (shown only in the private artifact), and a one-line tip.

@@ -317,18 +317,18 @@ def friction(conn: sqlite3.Connection) -> dict[str, dict]:
     """
     conn.row_factory = sqlite3.Row
     prompts = conn.execute(
-        "SELECT uuid, session_id, ts, kind, own_text FROM prompts WHERE ts IS NOT NULL "
+        "SELECT uuid, session_id, ts, kind, own_text FROM main.prompts WHERE ts IS NOT NULL "
         "ORDER BY session_id, ts"
     ).fetchall()
     events: dict[str, list] = defaultdict(list)
-    for e in conn.execute("SELECT session_id, ts, kind FROM events WHERE ts IS NOT NULL"):
+    for e in conn.execute("SELECT session_id, ts, kind FROM main.events WHERE ts IS NOT NULL"):
         events[e["session_id"]].append((e["ts"], e["kind"]))
     tools: dict[str, list] = defaultdict(list)
-    for t in conn.execute("SELECT session_id, ts, name FROM tool_uses WHERE ts IS NOT NULL"):
+    for t in conn.execute("SELECT session_id, ts, name FROM main.tool_uses WHERE ts IS NOT NULL"):
         tools[t["session_id"]].append((t["ts"], t["name"]))
     replies: dict[str, list] = defaultdict(list)
     for r in conn.execute(
-        "SELECT session_id, ts, text FROM replies WHERE ts IS NOT NULL ORDER BY session_id, ts"
+        "SELECT session_id, ts, text FROM main.replies WHERE ts IS NOT NULL ORDER BY session_id, ts"
     ):
         replies[r["session_id"]].append((r["ts"], r["text"]))
 
@@ -390,17 +390,38 @@ def _rate(items: list[dict]) -> dict:
     }
 
 
-def compute(conn: sqlite3.Connection, tz=None) -> dict:
+def compute(conn: sqlite3.Connection, ws=None) -> dict:
+    """Specificity + friction over the working set's window (default: all-time).
+
+    The window picks which prompts are reported. Facts about each prompt (its friction, whether
+    it opened a session) always come from full memory, so a prompt gets the same verdict in
+    every window. Only an all-time run saves `prompt_scores`.
+    """
+    from pompy.working_set import WorkingSet
+
+    ws = ws or WorkingSet()
+    with ws.lens(conn):
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT uuid, session_id, ts, own_text, text, has_paste, has_image FROM prompts "
+            "WHERE kind = 'typed' AND ts IS NOT NULL ORDER BY ts"
+        ).fetchall()
+    result = _compute(conn, rows, ws.tz, save=ws.window.all_time)
+    result["window"] = ws.window.label
+    return result
+
+
+def _compute(conn: sqlite3.Connection, rows: list, tz, save: bool) -> dict:
     from pompy.stats import WORD_BUCKETS, parse_ts
 
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT uuid, session_id, ts, own_text, text, has_paste, has_image FROM prompts "
-        "WHERE kind = 'typed' AND ts IS NOT NULL ORDER BY ts"
-    ).fetchall()
     first_in_session = {
         r["session_id"]: r["uuid"]
-        for r in reversed(rows)  # reversed, so the earliest prompt per session wins
+        for r in reversed(  # reversed, so the earliest prompt per session wins
+            conn.execute(
+                "SELECT session_id, uuid FROM main.prompts "
+                "WHERE kind = 'typed' AND ts IS NOT NULL ORDER BY ts"
+            ).fetchall()
+        )
     }
     fr = friction(conn)
     none = {k: False for k in FRICTION_KINDS} | {"any": False}
@@ -409,7 +430,8 @@ def compute(conn: sqlite3.Connection, tz=None) -> dict:
     for r in rows:
         s = score_text(r["own_text"], bool(r["has_paste"]), bool(r["has_image"]))
         items.append({**s, "uuid": r["uuid"], "row": r, "friction": fr.get(r["uuid"], none)})
-    _save(conn, items)
+    if save:
+        _save(conn, items)
 
     tasks = [i for i in items if i["role"] == "task"]
     roles: dict[str, int] = defaultdict(int)
@@ -477,6 +499,7 @@ def compute(conn: sqlite3.Connection, tz=None) -> dict:
             "median": scores[len(scores) // 2] if scores else None,
             "distribution": dist,
             "session_openers_mean": avg([t["score"] for t in openers]),
+            "session_openers": len(openers),
             "follow_ups_mean": avg([t["score"] for t in followups]),
             "by_month": {m: avg(v) for m, v in sorted(by_month.items())},
         },

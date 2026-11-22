@@ -9,6 +9,7 @@ import pytest
 
 from pompy import stats
 from pompy.ingest import ingest
+from pompy.working_set import WorkingSet
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -24,7 +25,7 @@ def conn(tmp_path):
 
 
 def test_totals(conn):
-    t = stats.compute(conn, ZoneInfo("UTC"))["totals"]
+    t = stats.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))["totals"]
     assert t["prompts"] == 10
     assert t["prompts_by_kind"] == {"typed": 7, "command": 1, "bash": 1, "suggestion": 1}
     assert t["sessions"] == 2 and t["projects"] == 2
@@ -32,7 +33,7 @@ def test_totals(conn):
 
 
 def test_models_and_effort(conn):
-    s = stats.compute(conn, ZoneInfo("UTC"))
+    s = stats.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))
     m = s["models"]
     assert m["by_messages"] == {"claude-opus-5-5": 2, "claude-sonnet-5-5": 2, "claude-haiku-5-5": 1}
     assert m["main_model_per_session"]["claude-opus-5-5"] == 1  # sess-alpha
@@ -42,10 +43,10 @@ def test_models_and_effort(conn):
 
 
 def test_time_is_converted_to_local_zone(conn):
-    utc = stats.compute(conn, ZoneInfo("UTC"))["time"]
+    utc = stats.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))["time"]
     assert utc["by_hour"][23] == 6 and utc["by_hour"][14] == 3 and utc["by_hour"][15] == 1
 
-    ny = stats.compute(conn, ZoneInfo("America/New_York"))["time"]
+    ny = stats.compute(conn, WorkingSet(tz=ZoneInfo("America/New_York")))["time"]
     # 23:30 UTC on 10 March 2026 is 19:30 in New York (daylight saving began 8 March).
     assert ny["by_hour"][19] == 6 and ny["by_hour"][10] == 3 and ny["by_hour"][11] == 1
     assert ny["peak_hour"] == 19
@@ -56,7 +57,7 @@ def test_time_is_converted_to_local_zone(conn):
 
 
 def test_sessions_count_only_active_time(conn):
-    se = stats.compute(conn, ZoneInfo("UTC"))["sessions"]
+    se = stats.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))["sessions"]
     assert se["prompts_per_session"]["max"] == 6
     # alpha: 35 active minutes. beta: ~5 minutes, because the 85-minute pause doesn't count.
     assert se["active_minutes"]["max"] == 35.0
@@ -65,7 +66,7 @@ def test_sessions_count_only_active_time(conn):
 
 
 def test_lengths_commands_tools(conn):
-    s = stats.compute(conn, ZoneInfo("UTC"))
+    s = stats.compute(conn, WorkingSet(tz=ZoneInfo("UTC")))
     assert sum(s["prompt_length"]["buckets"].values()) == 7
     assert s["prompt_length"]["with_paste"] == 1 and s["prompt_length"]["with_image"] == 1
     assert s["commands"] == {"/compact": 1}
@@ -74,5 +75,5 @@ def test_lengths_commands_tools(conn):
 
 
 def test_report_renders(conn):
-    text = stats.render(stats.compute(conn, ZoneInfo("UTC")))
+    text = stats.render(stats.compute(conn, WorkingSet(tz=ZoneInfo("UTC"))))
     assert "POMPY" in text and "claude-opus-5-5" in text

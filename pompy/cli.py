@@ -39,24 +39,46 @@ def _cmd_ingest(args: argparse.Namespace) -> None:
         print(f"  from {s['first_prompt'][:10]} to {s['last_prompt'][:10]} (UTC)")
 
 
-def _cmd_stats(args: argparse.Namespace) -> None:
-    import json
+def _working_set(args: argparse.Namespace, period: str | None = None):
+    """The analysis window for this command: all-time unless --period/--project narrow it."""
     from zoneinfo import ZoneInfo
 
-    from pompy import stats, store
+    from pompy.working_set import WorkingSet
 
-    conn = store.connect(config.data_dir() / "pompy.db")
-    result = stats.compute(conn, ZoneInfo(args.tz) if args.tz else None)
-    conn.close()
-    if not result["totals"]["prompts"]:
-        print("No prompts yet. Run `pompy ingest` first.")
+    tz = ZoneInfo(args.tz) if getattr(args, "tz", None) else None
+    try:
+        return WorkingSet.for_period(
+            period or getattr(args, "period", None), tz, getattr(args, "project", None)
+        )
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
+
+
+def _save_result(name: str, result: dict, ws, as_json: bool, text: str) -> None:
+    """Print a report. Only all-time results are saved: they are Pompy's reference copy."""
+    import json
+
+    print(json.dumps(result, indent=2) if as_json else text)
+    if not ws.window.all_time:
         return
     out = config.out_dir()
     out.mkdir(parents=True, exist_ok=True)
-    (out / "stats.json").write_text(json.dumps(result, indent=2))
-    print(json.dumps(result, indent=2) if args.json else stats.render(result))
-    if not args.json:
-        print(f"\n(saved to {out / 'stats.json'})")
+    (out / name).write_text(json.dumps(result, indent=2))
+    if not as_json:
+        print(f"\n(saved to {out / name})")
+
+
+def _cmd_stats(args: argparse.Namespace) -> None:
+    from pompy import stats
+
+    ws = _working_set(args)
+    conn = _open_store()
+    result = stats.compute(conn, ws)
+    conn.close()
+    if not result["totals"]["prompts"]:
+        print(f"No prompts in {ws.window.label}. Run `pompy ingest` first, or widen --period.")
+        return
+    _save_result("stats.json", result, ws, args.json, stats.render(result))
 
 
 def _open_store():
@@ -72,39 +94,25 @@ def _open_store():
 
 
 def _cmd_keywords(args: argparse.Namespace) -> None:
-    import json
-    from zoneinfo import ZoneInfo
-
     from pompy import keywords
 
+    ws = _working_set(args)
     conn = _open_store()
-    result = keywords.compute(conn, ZoneInfo(args.tz) if args.tz else None)
+    result = keywords.compute(conn, ws)
     conn.close()
     if not result["typed_prompts"]:
-        print("No prompts yet. Run `pompy ingest` first.")
+        print(f"No prompts in {ws.window.label}. Run `pompy ingest` first, or widen --period.")
         return
-    out = config.out_dir()
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "keywords.json").write_text(json.dumps(result, indent=2))
-    print(json.dumps(result, indent=2) if args.json else keywords.render(result))
-    if not args.json:
-        print(f"\n(saved to {out / 'keywords.json'})")
+    _save_result("keywords.json", result, ws, args.json, keywords.render(result))
 
 
 def _cmd_search(args: argparse.Namespace) -> None:
-    from zoneinfo import ZoneInfo
-
     from pompy.search import search
 
+    ws = _working_set(args)
     conn = _open_store()
-    hits = search(
-        conn,
-        " ".join(args.query),
-        limit=args.limit,
-        project=args.project,
-        raw=args.raw,
-        tz=ZoneInfo(args.tz) if args.tz else None,
-    )
+    with ws.lens(conn):
+        hits = search(conn, " ".join(args.query), limit=args.limit, raw=args.raw, tz=ws.tz)
     conn.close()
     if not hits:
         print("No matches.")
@@ -115,23 +123,56 @@ def _cmd_search(args: argparse.Namespace) -> None:
 
 
 def _cmd_score(args: argparse.Namespace) -> None:
-    import json
-    from zoneinfo import ZoneInfo
-
     from pompy import score
 
+    ws = _working_set(args)
     conn = _open_store()
-    result = score.compute(conn, ZoneInfo(args.tz) if args.tz else None)
+    result = score.compute(conn, ws)
     conn.close()
     if not result["typed_prompts"]:
-        print("No prompts yet. Run `pompy ingest` first.")
+        print(f"No prompts in {ws.window.label}. Run `pompy ingest` first, or widen --period.")
         return
+    _save_result("specificity.json", result, ws, args.json, score.render(result))
+
+
+def _cmd_compare(args: argparse.Namespace) -> None:
+    import json
+
+    from pompy import compare
+    from pompy.working_set import before
+
+    a = _working_set(args, args.period_a)
+    if args.period_b == "before":
+        try:
+            b = type(a)(window=before(a.window), tz=a.tz)
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
+    else:
+        b = _working_set(args, args.period_b)
+    conn = _open_store()
+    result = compare.compute(conn, a, b)
+    conn.close()
+    print(json.dumps(result, indent=2) if args.json else compare.render(result))
+
+
+def _cmd_context(args: argparse.Namespace) -> None:
+    import json
+
+    from pompy import working_set
+
+    ws = _working_set(args)
+    ws.question = " ".join(args.question)
+    ws.budget_tokens = args.budget
+    conn = _open_store()
+    ws.retrieve(conn)
+    conn.close()
+    manifest = ws.manifest()
     out = config.out_dir()
     out.mkdir(parents=True, exist_ok=True)
-    (out / "specificity.json").write_text(json.dumps(result, indent=2))
-    print(json.dumps(result, indent=2) if args.json else score.render(result))
+    (out / "working_set.json").write_text(json.dumps(manifest, indent=2))
+    print(json.dumps(manifest, indent=2) if args.json else working_set.render(ws))
     if not args.json:
-        print(f"\n(saved to {out / 'specificity.json'})")
+        print(f"\n(saved to {out / 'working_set.json'}: the Memory Lab reads this)")
 
 
 def _cmd_check(args: argparse.Namespace) -> None:
@@ -142,6 +183,8 @@ def _cmd_check(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    from pompy.working_set import PERIOD_HELP
+
     parser = argparse.ArgumentParser(prog="pompy", description=__doc__)
     parser.add_argument("--version", action="version", version=f"pompy {__version__}")
     sub = parser.add_subparsers(dest="command")
@@ -178,6 +221,32 @@ def main() -> None:
     p_score.add_argument("--tz", help="time zone for monthly trend (default: this Mac's)")
     p_score.add_argument("--json", action="store_true", help="print the raw JSON")
     p_score.set_defaults(func=_cmd_score)
+
+    p_compare = sub.add_parser("compare", help="two periods side by side: are you improving?")
+    p_compare.add_argument("period_a", help="e.g. this-month, 30d, 2026-10")
+    p_compare.add_argument(
+        "period_b", nargs="?", default="before", help="default: everything before period_a"
+    )
+    p_compare.add_argument("--tz", help="time zone for periods (default: this Mac's)")
+    p_compare.add_argument("--json", action="store_true", help="print the raw JSON")
+    p_compare.set_defaults(func=_cmd_compare)
+
+    p_context = sub.add_parser(
+        "context", help="build a working set (short-term memory) for a question and show it"
+    )
+    p_context.add_argument("question", nargs="+", help="what to gather evidence for")
+    p_context.add_argument(
+        "--budget", type=int, default=1500, help="token budget (estimate, default 1500)"
+    )
+    p_context.add_argument("--tz", help="time zone for dates (default: this Mac's)")
+    p_context.add_argument("--json", action="store_true", help="print the manifest as JSON")
+    p_context.set_defaults(func=_cmd_context)
+
+    for p in (p_stats, p_kw, p_search, p_score, p_compare, p_context):
+        if p is not p_compare:
+            p.add_argument("--period", help=f"analysis window (default: all). {PERIOD_HELP}")
+        if p is not p_search:
+            p.add_argument("--project", help="only this project (exact name, else contains)")
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")
