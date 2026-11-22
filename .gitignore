@@ -31,3 +31,6 @@ dist/
 .idea/
 .vscode/
 .claude/settings.local.json
+
+# Local Claude Code workflows and settings (not part of Pompy)
+.claude/workflows/
