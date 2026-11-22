@@ -1,0 +1,33 @@
+# ── Personal data: NEVER commit ─────────────────────────────
+# Raw transcripts, the memory store, embeddings, and anything generated from them.
+data/
+out/
+exports/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.jsonl
+!tests/fixtures/*.jsonl
+conversations*.json
+*.parquet
+*.npy
+*.faiss
+.env
+.env.*
+
+# ── Python ──────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# ── OS / editor ─────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+.claude/settings.local.json

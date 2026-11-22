@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pompy"
+version = "0.0.1"
+description = "Personal pattern recognizer for how you prompt Claude, built on layered agentic memory + RAG."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+pompy = "pompy.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["pompy*"]
+
+[tool.ruff]
+line-length = 100
