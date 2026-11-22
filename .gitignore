@@ -8,7 +8,7 @@ exports/
 *.sqlite
 *.sqlite3
 *.jsonl
-!tests/fixtures/*.jsonl
+!tests/fixtures/**/*.jsonl
 conversations*.json
 *.parquet
 *.npy

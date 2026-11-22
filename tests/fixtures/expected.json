@@ -1,0 +1,60 @@
+{
+  "_about": "Answer key for the synthetic transcripts in tests/fixtures/projects/. Ingest must produce exactly this.",
+  "sessions": {
+    "sess-alpha": {
+      "project_name": "demo-app",
+      "entrypoint": "cli",
+      "title": "Build login page",
+      "first_ts": "2026-03-10T23:30:00.000Z",
+      "last_ts": "2026-03-11T00:05:00.000Z",
+      "subagent_files": 1
+    },
+    "sess-beta": {
+      "project_name": "notes-api",
+      "entrypoint": "claude-desktop",
+      "title": "Fix notes API bug",
+      "first_ts": "2026-04-02T14:00:00.000Z",
+      "last_ts": "2026-04-02T15:31:00.000Z",
+      "subagent_files": 0
+    }
+  },
+  "prompts": {
+    "a-u1": {"kind": "typed", "source": "typed"},
+    "a-u9": {"kind": "typed", "source": "typed"},
+    "a-u11": {"kind": "command", "text": "/compact"},
+    "a-u14": {"kind": "bash", "text": "npm test"},
+    "a-u16": {"kind": "suggestion", "text": "Run the tests"},
+    "a-u17": {"kind": "typed", "source": "queued", "text": "also add a forgot password link"},
+    "b-u1": {"kind": "typed", "text": "fix the bug"},
+    "b-u3": {"kind": "typed", "has_paste": true},
+    "b-u4": {"kind": "typed", "has_image": true, "text": "make the notes list look like this"},
+    "b-u5": {"kind": "button", "text": "Start Step 2"},
+    "b-u8": {"kind": "typed", "source": null}
+  },
+  "skipped_because": {
+    "a-u5": "tool result",
+    "a-u6": "isMeta (injected reminder)",
+    "a-u7": "tool result (rejection, recorded as an event)",
+    "a-u8": "interrupt marker (recorded as an event)",
+    "a-u12": "compaction summary (recorded as an event)",
+    "a-u13": "local-command caveat (injected)",
+    "a-u15": "bash output, not input",
+    "a-u20": "sidechain (sub-agent)",
+    "a-u21": "task notification (system)",
+    "b-u6": "message from a peer agent",
+    "b-u7": "host-synthetic turn",
+    "b-u10": "wake notice (system)",
+    "x-u1": "inside subagents/ folder"
+  },
+  "events": {
+    "sess-alpha": {"tool_rejected": 1, "interrupt": 1, "compaction": 1},
+    "sess-beta": {}
+  },
+  "turns": {
+    "msg_a1": {"model": "claude-opus-5-5", "effort": "high", "tool_calls": 1, "output_tokens": 85},
+    "msg_a2": {"model": "claude-opus-5-5", "effort": "high", "tool_calls": 0},
+    "msg_a3": {"model": "claude-sonnet-5-5", "effort": "medium", "tool_calls": 0},
+    "msg_b1": {"model": "claude-sonnet-5-5", "effort": "medium", "tool_calls": 0},
+    "msg_b2": {"model": "claude-haiku-5-5", "effort": null, "tool_calls": 0}
+  }
+}

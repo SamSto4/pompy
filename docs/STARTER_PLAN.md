@@ -11,7 +11,7 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 - Tooling: `pytest`, `ruff`.
 - **Done when:** `pytest` runs green on an empty test.
 
-### Step 2: Synthetic fixtures (before touching real data)
+### Step 2: Synthetic fixtures (before touching real data) ✅
 - Hand-write 2–3 small fake `.jsonl` transcripts in `tests/fixtures/` that mimic the real schema: user/assistant records, tool results, a meta record, a compaction summary, a sub-agent turn.
 - **Done when:** fixtures cover every record type the parser must keep or skip.
 - 🧠 *Learning:* real agent logs are mostly **not** human prompts. Knowing what to filter out is half of memory hygiene.
