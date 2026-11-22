@@ -6,7 +6,7 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 
 ---
 
-### Step 1: Project setup
+### Step 1: Project setup ✅
 - `python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`
 - Tooling: `pytest`, `ruff`.
 - **Done when:** `pytest` runs green on an empty test.
