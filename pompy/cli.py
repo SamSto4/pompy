@@ -34,6 +34,7 @@ def _cmd_ingest(args: argparse.Namespace) -> None:
     print(f"  {s['prompts']} prompts ({kinds})")
     print(f"  {s['assistant_turns']} assistant messages")
     print(f"  {report.excerpts} exchange excerpts (prompt + reply + what happened next)")
+    print(f"  {report.episodes} episode cards (one per chat)")
     if s["events"]:
         print("  friction events: " + ", ".join(f"{n} {k}" for k, n in s["events"].items()))
     if s["first_prompt"]:
@@ -203,6 +204,34 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     print(json.dumps(result, indent=2) if args.json else evaluate.render(result))
 
 
+def _cmd_episodes(args: argparse.Namespace) -> None:
+    from pompy import episodes, hybrid
+
+    ws = _working_set(args)
+    conn = _open_store()
+    query = " ".join(args.query)
+    with ws.lens(conn):
+        if query:
+            found = episodes.find(conn, query, hybrid.default_embedder(conn), args.limit, ws.tz)
+        else:
+            listed = episodes.cards(conn, project=args.project, limit=args.limit)
+    conn.close()
+    if not query:
+        if not listed:
+            print("No episode cards. Run `pompy ingest` first, or widen --period.")
+        print("\n\n".join(episodes.render_card(c) for c in listed))
+        return
+    if not found:
+        print("No chats match.")
+    for f in found:
+        print(episodes.render_card(f["card"]))
+        print("  evidence:")
+        for e in f["evidence"]:
+            print(f"    · You: {e['prompt'][:140]}")
+            print(f"      Then: {e['outcome']}   (ref {e['uuid']})")
+        print()
+
+
 def _cmd_score(args: argparse.Namespace) -> None:
     from pompy import score
 
@@ -355,7 +384,15 @@ def main() -> None:
     p_context.add_argument("--json", action="store_true", help="print the manifest as JSON")
     p_context.set_defaults(func=_cmd_context)
 
-    for p in (p_stats, p_kw, p_search, p_score, p_compare, p_context):
+    p_episodes = sub.add_parser(
+        "episodes", help="one card per chat; with words, the chats about them (+ evidence)"
+    )
+    p_episodes.add_argument("query", nargs="*", help="optional: what the chat was about")
+    p_episodes.add_argument("--limit", type=int, default=10)
+    p_episodes.add_argument("--tz", help="time zone for dates (default: this Mac's)")
+    p_episodes.set_defaults(func=_cmd_episodes)
+
+    for p in (p_stats, p_kw, p_search, p_score, p_compare, p_context, p_episodes):
         if p is not p_compare:
             p.add_argument("--period", help=f"analysis window (default: all). {PERIOD_HELP}")
         if p is not p_search:

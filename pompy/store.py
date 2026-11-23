@@ -54,6 +54,30 @@ CREATE TABLE IF NOT EXISTS embeddings (  -- layer 3b: one vector per excerpt per
 );
 """
 
+EPISODES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS episode_cards (  -- derived: one per chat, for locating only
+    session_id         TEXT PRIMARY KEY,
+    ts                 TEXT,             -- first exchange (UTC): the window a card belongs to
+    project_key        TEXT,
+    project_name       TEXT,
+    title              TEXT,             -- Claude Code's own chat title, when it has one
+    intent             TEXT NOT NULL,    -- your first task prompt (or first prompt)
+    last_prompt        TEXT,
+    local_start        TEXT,
+    minutes            INTEGER,          -- active minutes (idle gaps over 30 min left out)
+    exchanges          INTEGER,
+    tasks              INTEGER,
+    mean_score         REAL,
+    friction_exchanges INTEGER,
+    friction_kinds     TEXT,             -- JSON counts by kind
+    files_changed      INTEGER,          -- Edit / Write tool calls
+    model              TEXT,             -- the model that answered most
+    outcome            TEXT NOT NULL,    -- shipped | changed files | stopped after friction
+                                         -- | talk only
+    description        TEXT              -- later: 1-2 sentences from Claude (Haiku, batched)
+);
+"""
+
 SCHEMA = (
     """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -141,6 +165,7 @@ CREATE INDEX IF NOT EXISTS idx_replies_session ON replies(session_id, ts);
     + PROMPT_SCORES_SCHEMA
     + EXCERPTS_SCHEMA
     + EMBEDDINGS_SCHEMA
+    + EPISODES_SCHEMA
 )
 
 

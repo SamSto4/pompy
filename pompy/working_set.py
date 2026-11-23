@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta, tzinfo
 
 # Tables the lens narrows. Each has a `ts` (UTC) and a `session_id`.
-TIMED_TABLES = ("prompts", "turns", "tool_uses", "replies", "events", "excerpts")
+TIMED_TABLES = ("prompts", "turns", "tool_uses", "replies", "events", "excerpts", "episode_cards")
 LENSED_TABLES = (*TIMED_TABLES, "sessions")
 
 CHARS_PER_TOKEN = 4  # rough estimate: Pompy has no tokenizer, so budgets are approximate

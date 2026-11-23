@@ -29,6 +29,7 @@ class Report:
     bytes_read: int = 0
     bad_lines: int = 0
     excerpts: int = 0  # exchange excerpts after this run (Phase 2, layer 2)
+    episodes: int = 0  # episode cards, one per chat with typed exchanges
     new: Counter = field(default_factory=Counter)
 
 
@@ -52,6 +53,9 @@ def ingest(source: Path, data: Path, copy_raw: bool = True) -> Report:
         from pompy import excerpts
 
         report.excerpts = excerpts.build(conn)["excerpts"]
+        from pompy import episodes
+
+        report.episodes = episodes.build(conn)["cards"]
     finally:
         conn.close()
     return report

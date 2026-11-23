@@ -57,12 +57,17 @@ Embeddings are optional: `pip install -e ".[memory]"`. Without them every comman
   2. With 30 candidates per half, many weak matches found by both halves outvoted one half's #1. At 10, hybrid matches meaning on hits and ranks better than either half. No weights were tuned: with 18 hand-written questions, a tuned weight would only fit the test.
   3. Whole-exchange embeddings match on Claude's reply too: "save my work to github" finds "is it okay to archive this session", because the reply was about committing and pushing. Useful for recall; it also means a match isn't always about what you typed.
 
-### Step 13: Episode cards (three representations)
+### Step 13: Episode cards (three representations) ✅
 - `episode_cards`: one per chat: title, intent (first task prompt), outcome (how it ended: committed, abandoned, corrected), counts, friction, project.
 - Cards are for **locating** only; evidence always cites excerpts.
 - Later, with the API key: a 1–2 sentence description per card from Haiku, batched and cached.
 - **Done when:** every chat has a card; `pompy episodes` lists them.
 - 🧠 *Learning:* the three representations (original, excerpts, cards) each have their own job; a summary may point, never prove.
+- **Built:** `pompy/episodes.py`, an `episode_cards` table rebuilt after every ingest, and `pompy episodes` (newest cards; `--period`, `--project`). With words, `pompy episodes <topic>` finds the chats about it by hybrid search, grouped by chat: each card arrives with the excerpts that matched as its evidence, so the card only locates.
+- A card holds: title (Claude Code's, when it has one) or intent (your first task prompt), last prompt, start, **active** minutes (gaps over 30 min left out, as in `pompy stats`; a chat reopened weeks later had read as 20,000 minutes), exchanges, tasks, mean score (same inputs as `pompy score`), friction by kind, files changed, main model, and outcome.
+- **Outcome**, checked in this order: *shipped* (a reply says committed / pushed / deployed / merged, with negations like "nothing is committed" or "haven't been pushed" excluded), *changed files* (Edit or Write calls), *stopped after friction* (the last exchange had friction), else *talk only*.
+- **First real run:** 29 cards: 12 shipped, 10 changed files, 6 talk only, 1 stopped after friction. Asking "login with google not working" finds the right chat and cites the exact exchange.
+- **To fix next (parsing):** app-injected messages count as your prompts: artifact comments sent to Claude, and Claude Code's "A pull request was just created…" note, which became one card's intent. They need a parse rule and a schema bump.
 
 ### Step 14: Pre-flight v1 and the Dashboard
 - **Notch:** "Prompts like this one" from your history, with what happened after ("3 of 5 needed a correction"). Hot path rule kept: the notch reads a precomputed neighbour file; no model runs while you type.
