@@ -43,6 +43,17 @@ CREATE INDEX IF NOT EXISTS idx_excerpts_session ON excerpts(session_id, ts);
 CREATE VIRTUAL TABLE IF NOT EXISTS excerpts_fts USING fts5(body, tokenize='porter unicode61');
 """
 
+EMBEDDINGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS embeddings (  -- layer 3b: one vector per excerpt per model
+    prompt_uuid TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    text_hash   TEXT NOT NULL,         -- the excerpt text it was computed from
+    dim         INTEGER NOT NULL,
+    vector      BLOB NOT NULL,         -- float32, unit length
+    PRIMARY KEY (prompt_uuid, model)
+);
+"""
+
 SCHEMA = (
     """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -129,6 +140,7 @@ CREATE INDEX IF NOT EXISTS idx_replies_session ON replies(session_id, ts);
 """
     + PROMPT_SCORES_SCHEMA
     + EXCERPTS_SCHEMA
+    + EMBEDDINGS_SCHEMA
 )
 
 

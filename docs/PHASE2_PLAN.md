@@ -27,11 +27,15 @@ Embeddings are optional: `pip install -e ".[memory]"`. Without them every comman
 - **First real run:** 352 exchanges. On the fixtures, a search for "bug" already finds "why does this happen" through its header (it followed "fix the bug"): context-aware retrieval working before any embeddings.
 - 🧠 *Learning:* an episode is cause and effect, not a single message. Contextual retrieval: a chunk is only findable if it carries its context.
 
-### Step 11: Local embeddings (layer 3b)
+### Step 11: Local embeddings (layer 3b) ✅
 - `pompy embed`: embeds new excerpts only (incremental, tracked by model name and text hash), stores float32 vectors in an `embeddings` table.
 - `pompy search --mode meaning "make the button nicer"` finds "improve the CTA styling".
 - **Done when:** a fixture test with a fake embedder proves the plumbing; a real run embeds every excerpt and a paraphrase query finds its match.
 - 🧠 *Learning:* semantic memory is a geometry: similar meanings sit close together. See where it beats keywords and where it fails (exact file names, error codes).
+- **Built:** `pompy/embed.py`, `pompy embed`, `pompy search --mode meaning`. Install with `pip install -e ".[memory]"`; the model lives in `~/.cache/pompy/models` (override with `POMPY_MODELS`). Queries get BGE's search instruction (`query_embed`), excerpts don't (`passage_embed`). A vector is reused while its excerpt's `text_hash` is unchanged, and a stale vector is never returned.
+- **First real run:** 352 exchanges embedded in 25 s; a second run does nothing. "make the page look nicer on phones" finds website-redesign prompts where keyword search finds none; "save my work to github" finds "commit it, remind me which github repo…". BGE scores sit in a narrow band (0.6 to 0.8), so rank matters, not the raw number.
+- **Found on the way:** artifact comments sent to Claude arrive as typed prompts. They are app-injected, so a later parse rule should drop them from your prompts.
+- **Seen in tests:** a short follow-up inherits its predecessor's meaning through the context header, so it can outrank the original. Step 12's eval should check whether that helps or hurts.
 
 ### Step 12: Hybrid retrieval (layers 4 and 5)
 - `pompy search --mode hybrid` (the new default): keyword and meaning results merged by RRF, with an optional recency × importance blend (importance = friction followed, or a high score).

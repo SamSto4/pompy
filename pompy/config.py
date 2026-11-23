@@ -19,3 +19,8 @@ def data_dir() -> Path:
 def out_dir() -> Path:
     """Generated insights (git-ignored). The Dashboard reads from here."""
     return Path(os.environ.get("POMPY_OUT", REPO_ROOT / "out"))
+
+
+def model_dir() -> Path:
+    """Downloaded embedding models: a user cache outside the repo, kept between runs."""
+    return Path(os.environ.get("POMPY_MODELS", Path.home() / ".cache" / "pompy" / "models"))

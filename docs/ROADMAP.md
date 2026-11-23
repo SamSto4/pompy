@@ -116,8 +116,8 @@ The Dashboard reads precomputed results, so opening it never triggers analysis.
 |---|---|---|
 | Language | Python 3.14, `venv` + `pip` | Already installed |
 | Store | SQLite (+ FTS5 keyword search) | A few hundred to a few thousand prompts: one file, zero ops |
-| Vectors | `sqlite-vec` or NumPy | Phase 2 decision; check 3.14 wheels first |
-| Embeddings | Local model (e.g. `fastembed`) or Voyage API | Phase 2 decision gate |
+| Vectors | NumPy arrays as SQLite BLOBs, brute-force cosine | Decided in Phase 2: this Python's `sqlite3` can't load extensions, so no `sqlite-vec` |
+| Embeddings | `fastembed` + `BAAI/bge-small-en-v1.5`, local CPU | Decided in Phase 2: optional extra `.[memory]` |
 | AI steps | Claude API: `claude-haiku-5-5` (bulk), `claude-sonnet-5-5` / `claude-opus-5-5` (consolidation, rewrites) | Key in git-ignored `.env` |
 | Pre-flight | Claude Code `UserPromptSubmit` hook | Fast, local, non-blocking by default |
 | Dashboard | Private claude.ai artifact, opened in Claude Code's artifact pane | Data delivered via the artifact's `db`; reading project files directly via the `files` capability is an experiment |

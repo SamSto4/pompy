@@ -112,11 +112,18 @@ def _cmd_search(args: argparse.Namespace) -> None:
 
     ws = _working_set(args)
     conn = _open_store()
-    if args.exchanges:
-        from pompy import excerpts
+    if args.exchanges or args.mode == "meaning":
+        from pompy import embed, excerpts
 
+        query = " ".join(args.query)
         with ws.lens(conn):
-            found = excerpts.search(conn, " ".join(args.query), limit=args.limit, tz=ws.tz)
+            if args.mode == "meaning":
+                if not embed.count(conn):
+                    conn.close()
+                    raise SystemExit("No meaning index yet. Run `pompy embed` first.")
+                found = embed.search(conn, query, embed.FastEmbedder(), limit=args.limit, tz=ws.tz)
+            else:
+                found = excerpts.search(conn, query, limit=args.limit, tz=ws.tz)
         conn.close()
         if not found:
             print("No matches. (Run `pompy ingest` to build exchange excerpts.)")
@@ -137,6 +144,25 @@ def _cmd_search(args: argparse.Namespace) -> None:
         print(f"{h['local_time']}  {h['project_name'] or h['project_key']}  ({h['kind']})")
         print(f"  {h['snippet']}")
         print(f"  ref: {h['session_id']} / {h['uuid']}")
+
+
+def _cmd_embed(args: argparse.Namespace) -> None:
+    from pompy import embed, excerpts
+
+    conn = _open_store()
+    if not excerpts.count(conn):
+        conn.close()
+        raise SystemExit("No exchange excerpts yet. Run `pompy ingest` first.")
+    result = embed.update(conn, embed.FastEmbedder())
+    total = embed.count(conn)
+    conn.close()
+    if args.quiet:
+        return
+    print(
+        f"Embedded {result['embedded']} exchanges in {result['seconds']}s "
+        f"({result['unchanged']} unchanged, {result['removed']} removed)."
+    )
+    print(f"Meaning index: {total} exchanges, model {embed.DEFAULT_MODEL} (local).")
 
 
 def _cmd_score(args: argparse.Namespace) -> None:
@@ -251,6 +277,12 @@ def main() -> None:
         action="store_true",
         help="search whole exchanges: your prompt, Claude's reply, and what happened next",
     )
+    p_search.add_argument(
+        "--mode",
+        choices=("keyword", "meaning"),
+        default="keyword",
+        help="keyword: matching words (BM25). meaning: similar meaning (local embeddings)",
+    )
     p_search.add_argument("--tz", help="time zone for dates (default: this Mac's)")
     p_search.set_defaults(func=_cmd_search)
 
@@ -290,6 +322,12 @@ def main() -> None:
     )
     p_publish.add_argument("--tz", help="time zone for dates (default: this Mac's)")
     p_publish.set_defaults(func=_cmd_publish)
+
+    p_embed = sub.add_parser(
+        "embed", help="build the meaning index: local embeddings of new exchanges"
+    )
+    p_embed.add_argument("--quiet", action="store_true", help="print nothing (for hooks)")
+    p_embed.set_defaults(func=_cmd_embed)
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")
