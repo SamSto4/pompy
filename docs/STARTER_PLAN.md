@@ -81,7 +81,11 @@ Each step ends with a **"done when"** test and a **learning checkpoint**.
 - **Not done:** the `files` capability (reading `out/` straight from the project, which would remove the publish step) was not tested: it needs the Claude Code project's id. Phone-width layout is designed for (single column under 560px) but was not checked in a real narrow window.
 - 🧠 *Learning:* a dashboard is a **snapshot of long-term memory** taken at one moment, and the corrections you make on it are **human feedback** that the next version of the rules learns from.
 
-### Step 9: Pompy Pre-flight v0 (prompt review at send time)
+### Step 9: Pompy Pre-flight v0 (prompt review at send time) ✅
+- **Built** (`pompy/preflight.py`, `pompy preflight`): the hook reads the prompt as JSON on stdin and scores it with the Step 6 rubric. A task prompt at **3/7 or less is held** (strict mode became the default, because a non-blocking note arrives after the prompt is gone). The block message names the two parts you skip most, from `out/preflight.json`, a small profile `pompy publish` and `pompy score` write ahead of time. Sending the same text again within 10 minutes lets it through; `!!` skips the review; `pompy preflight --off` turns it off everywhere. Each verdict is logged to `data/preflight.jsonl` (scores and parts only, never the prompt text) for Phase 4's "does the advice help?".
+- **Measured:** 41 ms median, 67 ms p95 as a fresh process (`pompy preflight --bench 20`), under the 100 ms budget. Any error prints nothing, so the prompt goes through.
+- **Install** (global, so every session gets it): a `UserPromptSubmit` hook in `~/.claude/settings.json` running `<repo>/.venv/bin/pompy preflight` with a 2-second timeout.
+- **A richer version as a Claude Code mod** (outside this repo, since it holds local paths): it shows the review above the prompt box with Improve / Send improved / Send as is buttons. The hook is the version that runs everywhere.
 - A Claude Code `UserPromptSubmit` hook runs `pompy preflight` on every prompt you send.
 - It scores the prompt with the Step 6 rubric, compares it with your known habits, and writes a short Pompy note such as *"Score 2/7. You usually leave out what 'done' looks like. Consider adding acceptance criteria."*
 - **What Claude Code hooks allow** (checked against the hooks docs): a hook can't edit or rewrite your prompt, and can't open it for editing before it's sent. It can (a) add hidden context for Claude, or (b) block the prompt with a message you see, then you resend. So Pompy's note reaches you in these ways:

@@ -243,6 +243,10 @@ def _cmd_score(args: argparse.Namespace) -> None:
         print(f"No prompts in {ws.window.label}. Run `pompy ingest` first, or widen --period.")
         return
     _save_result("specificity.json", result, ws, args.json, score.render(result))
+    if ws.window.all_time:
+        from pompy import preflight
+
+        preflight.write_profile(preflight.build_profile(result), config.out_dir())
 
 
 def _cmd_compare(args: argparse.Namespace) -> None:
@@ -295,9 +299,49 @@ def _cmd_publish(args: argparse.Namespace) -> None:
     bundle = publish.build(conn, out, ZoneInfo(args.tz) if args.tz else None)
     conn.close()
     size = (out / "data.json").stat().st_size / 1024
+    from pompy import preflight
+
+    preflight.write_profile(preflight.build_profile(bundle["score"]), config.out_dir())
     print(f"Built the Pompy Dashboard in {out}")
     print(f"  {bundle['meta']['prompts']} prompts, data bundle {size:.0f} KB")
     print("  Nothing has left your Mac. Ask Claude to publish it to your private artifact.")
+
+
+def _cmd_preflight(args: argparse.Namespace) -> None:
+    from pompy import preflight
+
+    flag = config.data_dir() / "preflight_off"
+    if args.off or args.on:
+        if args.off:
+            flag.parent.mkdir(parents=True, exist_ok=True)
+            flag.touch()
+        else:
+            flag.unlink(missing_ok=True)
+        print(f"Pompy Pre-flight is {'off' if args.off else 'on'} in every session.")
+        return
+    if args.bench:
+        import json
+        import subprocess
+        import sys
+
+        event = json.dumps({"prompt": "fix the nav bar on mobile", "session_id": "bench"})
+        times = []
+        for _ in range(args.bench):
+            start = time.perf_counter()
+            subprocess.run(
+                [sys.executable, "-m", "pompy.cli", "preflight"],
+                input=event,
+                capture_output=True,
+                text=True,
+                env={**__import__("os").environ, "POMPY_DATA": str(config.data_dir() / "bench")},
+            )
+            times.append((time.perf_counter() - start) * 1000)
+        times.sort()
+        p95 = times[min(len(times) - 1, int(len(times) * 0.95))]
+        print(f"pompy preflight, {len(times)} runs as a fresh process (what the hook pays):")
+        print(f"  median {times[len(times) // 2]:.0f} ms · p95 {p95:.0f} ms · budget 100 ms")
+        return
+    preflight.main_hook()
 
 
 def _cmd_check(args: argparse.Namespace) -> None:
@@ -415,6 +459,15 @@ def main() -> None:
     p_eval.add_argument("--k", type=int, default=5, help="how many results count (default 5)")
     p_eval.add_argument("--json", action="store_true", help="print the raw JSON")
     p_eval.set_defaults(func=_cmd_eval)
+
+    p_pre = sub.add_parser(
+        "preflight",
+        help="the Pre-flight hook: reads a prompt as JSON on stdin, holds vague ones (fails open)",
+    )
+    p_pre.add_argument("--off", action="store_true", help="turn Pre-flight off everywhere")
+    p_pre.add_argument("--on", action="store_true", help="turn it back on")
+    p_pre.add_argument("--bench", type=int, metavar="N", help="time N runs as a fresh process")
+    p_pre.set_defaults(func=_cmd_preflight)
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")
