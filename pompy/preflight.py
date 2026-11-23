@@ -76,14 +76,25 @@ def _default_profile() -> dict:
 
 
 def review(prompt: str, profile: dict | None) -> dict:
-    """Score one prompt. Returns {role, score, missing (weakest first), hold, reason}."""
-    from pompy import score
+    """Score one prompt. Returns {role, style, score, missing (weakest first), hold, reason}.
+
+    Questions ("why was it blocked", "how do I…") are never held: they ask for an answer, so
+    a done-definition or output format rarely applies. Requests phrased as questions ("can you
+    fix…?") open as requests, not questions, and are still reviewed.
+    """
+    from pompy import keywords, score
 
     profile = profile or _default_profile()
     text = prompt.strip()
     r = score.score_text(text)
     missing = [n for n in profile["order"] if n in set(r["missing"])]
-    hold = r["role"] == "task" and r["score"] is not None and r["score"] <= HOLD_AT_OR_BELOW
+    style = keywords.opening_style(text)
+    hold = (
+        r["role"] == "task"
+        and style != "question"
+        and r["score"] is not None
+        and r["score"] <= HOLD_AT_OR_BELOW
+    )
     reason = ""
     if hold:
         parts = profile["parts"]
@@ -97,6 +108,7 @@ def review(prompt: str, profile: dict | None) -> dict:
         reason = "\n".join(lines)
     return {
         "role": r["role"],
+        "style": style,
         "score": r["score"],
         "missing": missing,
         "hold": hold,
@@ -153,6 +165,7 @@ def _log(data_dir: Path, event: dict, now: float, verdict: dict | None, resent: 
         if verdict:
             row.update(
                 role=verdict["role"],
+                style=verdict["style"],
                 score=verdict["score"],
                 missing=verdict["missing"],
                 held=verdict["hold"],

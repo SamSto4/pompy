@@ -135,3 +135,27 @@ def test_as_a_fresh_process_it_answers_quickly(dirs, tmp_path):
     elapsed_ms = (time.perf_counter() - start) * 1000
     assert json.loads(run.stdout)["decision"] == "block"
     assert elapsed_ms < 1000  # generous for CI; measured ~40 ms median on the dev Mac
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "why was my prompt blocked",
+        "what does this error mean?",
+        "how do I add the API key to my file",
+        "which folder are we in",
+        "does the hook run in every session?",
+    ],
+)
+def test_questions_are_never_held(dirs, question):
+    data, out = dirs
+    assert preflight.run_hook(_event(question), data, out, now=1000.0) == ""
+
+
+@pytest.mark.parametrize(
+    "request_", ["can you fix the nav bar?", "could you make the header smaller"]
+)
+def test_requests_phrased_as_questions_are_still_reviewed(dirs, request_):
+    data, out = dirs
+    decision = json.loads(preflight.run_hook(_event(request_), data, out, now=1000.0))
+    assert decision["decision"] == "block"
