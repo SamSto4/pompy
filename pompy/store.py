@@ -170,7 +170,7 @@ CREATE INDEX IF NOT EXISTS idx_replies_session ON replies(session_id, ts);
 
 
 # Bump when the schema OR the parsing rules change: older stores are rebuilt from data/raw/.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5  # 5: artifact comments keep only your words; app PR notes dropped
 
 
 def connect(db_path: Path) -> sqlite3.Connection:

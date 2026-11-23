@@ -65,3 +65,50 @@ def test_assistant_reply_text_skips_thinking_and_tool_calls():
     assert turn.record_uuid == "a1"
     assert turn.text == "Which file?\n\nOr the other one?"
     assert turn.tool_uses == [("t1", "Read")]
+
+
+ARTIFACT_COMMENT = """[Artifact comment sent to Claude]
+Artifact: https://claude.ai/code/artifact/00000000-0000-0000-0000-000000000000
+Comment thread: thread-1
+Sent to Claude at: 2026-11-23T08:39:00Z
+
+I sent you this comment from the artifact's comment thread. Please handle it in this session.
+
+=== BEGIN ARTIFACT COMMENT abc123 ===
+> make the header smaller
+>
+> and drop the dashes
+=== END ARTIFACT COMMENT abc123 ===
+
+The comment is anchored to the part of the artifact described below.
+<comment-anchor-context source="artifact content: index.html">
+Location: Header
+</comment-anchor-context>
+
+Answer this comment in its thread, not here."""
+
+
+def test_an_artifact_comment_keeps_only_your_quoted_words():
+    [prompt] = [i for i in parse_record(_user(ARTIFACT_COMMENT), "s1") if isinstance(i, Prompt)]
+    assert prompt.text == "make the header smaller\n\nand drop the dashes"
+    assert prompt.own_text == "make the header smaller and drop the dashes"
+    assert prompt.kind == "typed" and prompt.source == "artifact_comment"
+
+
+def test_an_artifact_comment_without_its_quote_is_not_a_prompt():
+    record = _user("[Artifact comment sent to Claude]\nArtifact: https://example.test/a")
+    assert not [i for i in parse_record(record, "s1") if isinstance(i, Prompt)]
+
+
+def test_the_apps_pull_request_note_is_not_a_prompt():
+    record = _user(
+        "A pull request was just created for this branch from the Claude Code UI: "
+        "https://github.com/example/repo/pull/5 You don't need to create one."
+    )
+    assert not [i for i in parse_record(record, "s1") if isinstance(i, Prompt)]
+
+
+def test_a_reply_that_quotes_text_is_still_yours():
+    record = _user("<!-- reply 1 -->\n> the old plan\nkeep the budget at $2 per task")
+    [prompt] = [i for i in parse_record(record, "s1") if isinstance(i, Prompt)]
+    assert "keep the budget at $2 per task" in prompt.own_text

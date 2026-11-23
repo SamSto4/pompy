@@ -26,6 +26,10 @@ Real transcripts are mostly not human prompts. These files deliberately mix the 
 | Injected reminders | `isMeta`, `<system-reminder>`, `<local-command-caveat>` | ❌ |
 | Shell output | `<bash-stdout>` | ❌ |
 | App-injected text | `textNotTyped: true` (wake notices, relays, PR commands) | ❌ |
+| App note without the flag | starts "A pull request was just created for this branch from the Claude Code UI" | ❌ |
+| Artifact comment sent to Claude | `[Artifact comment sent to Claude]` + the app's instructions | ✅ `typed`, source `artifact_comment`: only the `>`-quoted comment between BEGIN and END is kept |
+
+The last two rules are unit-tested in `tests/test_parse.py` (they came from real data after the fixtures were written).
 | Agent/system turns | `promptSource: system`, peer/task-notification origin, `host_synthetic`, `<wake>` | ❌ |
 | Sub-agent turns | `isSidechain`, or files in `subagents/` | ❌ |
 

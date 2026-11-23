@@ -45,6 +45,17 @@ _BASH_INPUT_RE = re.compile(r"<bash-input>(.*?)</bash-input>", re.DOTALL)
 _INTERRUPT_PREFIX = "[Request interrupted by user"
 _SYSTEM_BRACKET_PREFIXES = ("[Usage limit", "[Earlier usage-limit")
 
+# Notes the app writes into the prompt box without marking them textNotTyped.
+_APP_TEXT_PREFIXES = ("A pull request was just created for this branch from the Claude Code UI",)
+
+# An artifact comment you sent to Claude arrives wrapped in the app's instructions. Your words
+# are only the lines quoted with ">" between its BEGIN and END markers.
+_ARTIFACT_COMMENT_PREFIX = "[Artifact comment sent to Claude]"
+_ARTIFACT_COMMENT_RE = re.compile(
+    r"^=== BEGIN ARTIFACT COMMENT (\S+) ===\n(.*?)\n=== END ARTIFACT COMMENT \1 ===$",
+    re.DOTALL | re.MULTILINE,
+)
+
 _REJECTION_MARKERS = ("doesn't want to proceed", "tool use was rejected")
 
 # Who produced a turn. Anything other than a human is skipped.
@@ -182,8 +193,18 @@ def _parse_user(r: dict, session_id: str) -> list[Item]:
 
     if raw.startswith(_INTERRUPT_PREFIX):
         return [Event(uuid, session_id, ts, "interrupt")]
-    if raw.startswith(_SYSTEM_BRACKET_PREFIXES):
+    if raw.startswith(_SYSTEM_BRACKET_PREFIXES) or raw.startswith(_APP_TEXT_PREFIXES):
         return []
+    source = r.get("promptSource")
+    if raw.startswith(_ARTIFACT_COMMENT_PREFIX):
+        m = _ARTIFACT_COMMENT_RE.search(raw)
+        if not m:
+            return []
+        raw = "\n".join(
+            line[2:] if line.startswith("> ") else line.lstrip(">")
+            for line in m.group(2).splitlines()
+        ).strip()
+        source = "artifact_comment"
 
     kind, text, own_text, has_paste, marker_image = _clean_text(raw)
     if not text:
@@ -197,7 +218,7 @@ def _parse_user(r: dict, session_id: str) -> list[Item]:
             session_id=session_id,
             ts=ts,
             kind=kind,
-            source=r.get("promptSource"),
+            source=source,
             text=text,
             own_text=own_text,
             has_paste=has_paste,
