@@ -190,6 +190,7 @@ class WorkingSet:
     snippets: list[Snippet] = field(default_factory=list)
     left_out: list[dict] = field(default_factory=list)  # {uuid, rank, reason}
     window_counts: dict = field(default_factory=dict)  # prompts in the window vs in memory
+    retrieval: str = ""  # how the snippets were found: keyword | hybrid
 
     @classmethod
     def for_period(
@@ -244,23 +245,30 @@ class WorkingSet:
 
     # ── Retrieval: fill the working set with evidence for the question ──
 
-    def retrieve(self, conn: sqlite3.Connection, candidates: int = 25) -> WorkingSet:
+    def retrieve(
+        self, conn: sqlite3.Connection, candidates: int = 25, embedder="auto"
+    ) -> WorkingSet:
         """Pull the best-matching exchanges for `question` into the set, within the budget.
 
         Searches exchange excerpts (your prompt + Claude's reply + what happened next) when
-        they exist, else bare prompts. Every candidate that doesn't make it is kept in
-        `left_out` with the reason, so the Memory Lab can show what was excluded and why.
+        they exist, else bare prompts. With a meaning index, keyword and meaning results are
+        fused (hybrid); `embedder=None` forces keyword-only, "auto" uses the local model.
+        Every candidate that doesn't make it is kept in `left_out` with the reason, so the
+        Memory Lab can show what was excluded and why.
         """
-        from pompy import excerpts
+        from pompy import excerpts, hybrid
         from pompy.search import search
 
         self.snippets, self.left_out = [], []
         use_excerpts = excerpts.count(conn) > 0
+        if embedder == "auto":
+            embedder = hybrid.default_embedder(conn) if use_excerpts else None
+        self.retrieval = "hybrid" if use_excerpts and embedder else "keyword"
         with self.lens(conn):
             in_window = conn.execute("SELECT COUNT(*) FROM prompts").fetchone()[0]
             q = self.question or ""
             if use_excerpts:
-                hits = excerpts.search(conn, q, limit=candidates, tz=self.tz, match_any=True)
+                hits = hybrid.search(conn, q, embedder, limit=candidates, tz=self.tz)
             else:
                 hits = search(conn, q, limit=candidates, tz=self.tz, match_any=True)
                 marks = ",".join("?" * len(hits))
@@ -318,6 +326,7 @@ class WorkingSet:
             "budget_tokens_estimate": self.budget_tokens,
             "tokens_used_estimate": self.tokens_used,
             "counts": self.window_counts,
+            "retrieval": self.retrieval,
             "snippets": [asdict(s) for s in self.snippets],
             "left_out": self.left_out,
             "note": "Token counts are estimates (about 4 characters per token).",
@@ -348,7 +357,8 @@ def render(ws: WorkingSet) -> str:
         f"Working set for: {ws.question!r}",
         f"  window: {ws.window.label}"
         + (f" · project {ws.window.project}" if ws.window.project else "")
-        + f" · {c.get('prompts_in_window', 0)} of {c.get('prompts_in_memory', 0)} prompts in view",
+        + f" · {c.get('prompts_in_window', 0)} of {c.get('prompts_in_memory', 0)} prompts in view"
+        + (f" · {ws.retrieval} search" if ws.retrieval else ""),
         f"  budget: ~{ws.tokens_used} of ~{ws.budget_tokens} tokens used (estimate)",
         "",
         f"What went in ({len(ws.snippets)}):",

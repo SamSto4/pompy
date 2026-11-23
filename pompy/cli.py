@@ -112,23 +112,41 @@ def _cmd_search(args: argparse.Namespace) -> None:
 
     ws = _working_set(args)
     conn = _open_store()
-    if args.exchanges or args.mode == "meaning":
-        from pompy import embed, excerpts
+    mode = "keyword" if args.exchanges and args.mode == "hybrid" else args.mode
+    if args.raw:
+        mode = "prompts"  # FTS5 syntax applies to the bare-prompt index
+    if mode != "prompts":
+        from pompy import embed, excerpts, hybrid
 
+        if not excerpts.count(conn):
+            mode = "prompts"  # an old store: search bare prompts until `pompy ingest` runs
+    if mode != "prompts":
         query = " ".join(args.query)
+        embedder = hybrid.default_embedder(conn) if mode in ("hybrid", "meaning") else None
+        if mode == "meaning" and embedder is None:
+            conn.close()
+            raise SystemExit("No meaning index yet. Run `pompy embed` first.")
         with ws.lens(conn):
-            if args.mode == "meaning":
-                if not embed.count(conn):
-                    conn.close()
-                    raise SystemExit("No meaning index yet. Run `pompy embed` first.")
-                found = embed.search(conn, query, embed.FastEmbedder(), limit=args.limit, tz=ws.tz)
-            else:
+            if mode == "meaning":
+                found = embed.search(conn, query, embedder, limit=args.limit, tz=ws.tz)
+            elif mode == "keyword":
                 found = excerpts.search(conn, query, limit=args.limit, tz=ws.tz)
+            else:
+                found = hybrid.search(
+                    conn, query, embedder, limit=args.limit, tz=ws.tz, blend=args.blend
+                )
         conn.close()
+        if mode == "hybrid" and embedder is None:
+            print("(keyword only: run `pompy embed` to add meaning search)\n")
         if not found:
-            print("No matches. (Run `pompy ingest` to build exchange excerpts.)")
+            print("No matches.")
         for h in found:
-            print(f"{h['local_time']}  {h['header']}")
+            why = []
+            if h.get("keyword_rank"):
+                why.append(f"keyword #{h['keyword_rank']}")
+            if h.get("meaning_rank"):
+                why.append(f"meaning #{h['meaning_rank']}")
+            print(f"{h['local_time']}  {h['header']}" + (f"   [{', '.join(why)}]" if why else ""))
             print(f"  You: {h['prompt'][:200]}")
             if h["reply"]:
                 print(f"  Claude: {h['reply'][:200]}")
@@ -163,6 +181,26 @@ def _cmd_embed(args: argparse.Namespace) -> None:
         f"({result['unchanged']} unchanged, {result['removed']} removed)."
     )
     print(f"Meaning index: {total} exchanges, model {embed.DEFAULT_MODEL} (local).")
+
+
+def _cmd_eval(args: argparse.Namespace) -> None:
+    import json
+
+    from pompy import evaluate, excerpts, hybrid
+
+    path = Path(args.file) if args.file else config.data_dir() / "eval.json"
+    if not path.exists():
+        raise SystemExit(
+            f"No eval set at {path}. Write one as a JSON list of "
+            '{"query": ..., "relevant": [prompt uuids]} (keep it in data/: it holds your prompts).'
+        )
+    conn = _open_store()
+    if not excerpts.count(conn):
+        conn.close()
+        raise SystemExit("No exchange excerpts yet. Run `pompy ingest` first.")
+    result = evaluate.run(conn, evaluate.load(path), hybrid.default_embedder(conn), k=args.k)
+    conn.close()
+    print(json.dumps(result, indent=2) if args.json else evaluate.render(result))
 
 
 def _cmd_score(args: argparse.Namespace) -> None:
@@ -265,7 +303,7 @@ def main() -> None:
     p_kw.add_argument("--json", action="store_true", help="print the raw JSON")
     p_kw.set_defaults(func=_cmd_keywords)
 
-    p_search = sub.add_parser("search", help="keyword search over all your prompts (BM25)")
+    p_search = sub.add_parser("search", help="search your exchanges by words and meaning")
     p_search.add_argument("query", nargs="+", help="words to find (stems match: fix ≈ fixing)")
     p_search.add_argument("--limit", type=int, default=10)
     p_search.add_argument(
@@ -275,13 +313,19 @@ def main() -> None:
     p_search.add_argument(
         "--exchanges",
         action="store_true",
-        help="search whole exchanges: your prompt, Claude's reply, and what happened next",
+        help="same as --mode keyword (kept for scripts)",
     )
     p_search.add_argument(
         "--mode",
-        choices=("keyword", "meaning"),
-        default="keyword",
-        help="keyword: matching words (BM25). meaning: similar meaning (local embeddings)",
+        choices=("hybrid", "keyword", "meaning", "prompts"),
+        default="hybrid",
+        help="hybrid (default): keyword + meaning, fused. keyword: matching words (BM25). "
+        "meaning: similar meaning (local embeddings). prompts: your bare prompts only",
+    )
+    p_search.add_argument(
+        "--blend",
+        action="store_true",
+        help="hybrid: favour recent exchanges and ones with friction",
     )
     p_search.add_argument("--tz", help="time zone for dates (default: this Mac's)")
     p_search.set_defaults(func=_cmd_search)
@@ -328,6 +372,12 @@ def main() -> None:
     )
     p_embed.add_argument("--quiet", action="store_true", help="print nothing (for hooks)")
     p_embed.set_defaults(func=_cmd_embed)
+
+    p_eval = sub.add_parser("eval", help="measure retrieval: keyword vs meaning vs hybrid")
+    p_eval.add_argument("file", nargs="?", help="eval set JSON (default: data/eval.json)")
+    p_eval.add_argument("--k", type=int, default=5, help="how many results count (default 5)")
+    p_eval.add_argument("--json", action="store_true", help="print the raw JSON")
+    p_eval.set_defaults(func=_cmd_eval)
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")

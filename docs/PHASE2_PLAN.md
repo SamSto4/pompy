@@ -37,12 +37,25 @@ Embeddings are optional: `pip install -e ".[memory]"`. Without them every comman
 - **Found on the way:** artifact comments sent to Claude arrive as typed prompts. They are app-injected, so a later parse rule should drop them from your prompts.
 - **Seen in tests:** a short follow-up inherits its predecessor's meaning through the context header, so it can outrank the original. Step 12's eval should check whether that helps or hurts.
 
-### Step 12: Hybrid retrieval (layers 4 and 5)
+### Step 12: Hybrid retrieval (layers 4 and 5) ✅
 - `pompy search --mode hybrid` (the new default): keyword and meaning results merged by RRF, with an optional recency × importance blend (importance = friction followed, or a high score).
 - `WorkingSet.retrieve` uses hybrid, so `pompy context` and the Memory Lab get better picks without changing shape.
 - A small **retrieval eval**: hand-labelled queries over the fixtures, scored for keyword vs meaning vs hybrid (hit rate at 5). Run on real data too, printed, never committed.
 - **Done when:** hybrid matches or beats both halves on the eval.
 - 🧠 *Learning:* fusion, and why you measure retrieval before trusting it.
+- **Built:** `pompy/hybrid.py` (RRF, k = 60, optional `--blend` for recency × importance), `pompy/evaluate.py` and `pompy eval`. `pompy search` now defaults to `--mode hybrid` over exchanges (`keyword`, `meaning` and `prompts` remain); every hit says which half found it. `WorkingSet.retrieve` fuses both halves when the meaning index exists and reports `retrieval: hybrid`.
+- **What the eval taught us** (18 known-item questions about real exchanges, written in different words; kept in `data/eval.json`, never committed):
+
+  | Mode | hit@5 | MRR |
+  |---|---|---|
+  | keyword | 0.56 | 0.37 |
+  | meaning | 0.72 | 0.50 |
+  | hybrid, 30 candidates per half | 0.61 | 0.51 |
+  | **hybrid, 10 candidates per half** | **0.72** | **0.55** |
+
+  1. OR-mode keyword search matched filler words ("with", "through") and flooded the fusion, so stopwords are now dropped from OR queries.
+  2. With 30 candidates per half, many weak matches found by both halves outvoted one half's #1. At 10, hybrid matches meaning on hits and ranks better than either half. No weights were tuned: with 18 hand-written questions, a tuned weight would only fit the test.
+  3. Whole-exchange embeddings match on Claude's reply too: "save my work to github" finds "is it okay to archive this session", because the reply was about committing and pushing. Useful for recall; it also means a match isn't always about what you typed.
 
 ### Step 13: Episode cards (three representations)
 - `episode_cards`: one per chat: title, intent (first task prompt), outcome (how it ended: committed, abandoned, corrected), counts, friction, project.

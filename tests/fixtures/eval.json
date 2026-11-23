@@ -1,0 +1,8 @@
+[
+  {"query": "fix the bug", "relevant": ["b-u1"], "kind": "exact words"},
+  {"query": "forgot password link", "relevant": ["a-u17"], "kind": "exact words"},
+  {"query": "notes list look", "relevant": ["b-u4"], "kind": "exact words"},
+  {"query": "sign in with credentials", "relevant": ["a-u1"], "kind": "paraphrase"},
+  {"query": "something is broken and crashing", "relevant": ["b-u1", "b-u3"], "kind": "paraphrase"},
+  {"query": "paging through results", "relevant": ["b-u8"], "kind": "paraphrase"}
+]

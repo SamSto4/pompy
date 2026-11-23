@@ -21,10 +21,19 @@ def to_fts_query(query: str, match_any: bool = False) -> str:
     Each whitespace-separated chunk becomes one phrase, so "it's" must appear as "it s"
     (adjacent) and "co-author" as "co author", not as two unrelated words anywhere.
     With match_any, any word may match (OR), and BM25 ranks prompts matching more of them
-    higher: right for gathering evidence, where a near miss is still useful.
+    higher: right for gathering evidence, where a near miss is still useful. Stopwords are
+    dropped in that mode, since one would match almost every prompt.
     """
-    phrases = (" ".join(_PART_RE.findall(chunk)) for chunk in query.split())
-    return (" OR " if match_any else " ").join(f'"{p}"' for p in phrases if p)
+    phrases = [" ".join(_PART_RE.findall(chunk)) for chunk in query.split()]
+    phrases = [p for p in phrases if p]
+    if match_any:
+        # In OR mode a filler word ("with", "is", "through") matches nearly everything and
+        # floods the results, so drop stopwords unless the query is nothing but stopwords.
+        from pompy.keywords import STOPWORDS
+
+        content = [p for p in phrases if p.lower() not in STOPWORDS]
+        phrases = content or phrases
+    return (" OR " if match_any else " ").join(f'"{p}"' for p in phrases)
 
 
 def project_keys(conn: sqlite3.Connection, project: str) -> list[str]:
