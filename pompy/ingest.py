@@ -28,6 +28,7 @@ class Report:
     files_read: int = 0
     bytes_read: int = 0
     bad_lines: int = 0
+    excerpts: int = 0  # exchange excerpts after this run (Phase 2, layer 2)
     new: Counter = field(default_factory=Counter)
 
 
@@ -48,6 +49,9 @@ def ingest(source: Path, data: Path, copy_raw: bool = True) -> Report:
             _ingest_file(conn, path, data, copy_raw, report)
         _count_subagents(conn, source)
         conn.commit()
+        from pompy import excerpts
+
+        report.excerpts = excerpts.build(conn)["excerpts"]
     finally:
         conn.close()
     return report

@@ -23,13 +23,14 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta, tzinfo
 
 # Tables the lens narrows. Each has a `ts` (UTC) and a `session_id`.
-TIMED_TABLES = ("prompts", "turns", "tool_uses", "replies", "events")
+TIMED_TABLES = ("prompts", "turns", "tool_uses", "replies", "events", "excerpts")
 LENSED_TABLES = (*TIMED_TABLES, "sessions")
 
 CHARS_PER_TOKEN = 4  # rough estimate: Pompy has no tokenizer, so budgets are approximate
 DEFAULT_BUDGET_TOKENS = 1500
 PER_SESSION_LIMIT = 2  # more than this from one chat crowds out other evidence
 SNIPPET_CHARS = 400
+REPLY_SNIPPET_CHARS = 240  # how much of Claude's reply a snippet carries
 
 
 # ── The window: which slice of memory to look at ─────────────────────────────
@@ -163,6 +164,12 @@ class Snippet:
     text: str
     rank: int  # position in the keyword search (1 = best match)
     tokens: int  # estimated
+    reply: str = ""  # the start of Claude's reply (exchange excerpts only)
+    outcome: str = ""  # what happened next: friction, or "moved on"
+
+
+def _clip(text: str, n: int) -> str:
+    return text if len(text) <= n else text[: n - 1] + "…"
 
 
 def estimate_tokens(text: str) -> int:
@@ -238,24 +245,33 @@ class WorkingSet:
     # ── Retrieval: fill the working set with evidence for the question ──
 
     def retrieve(self, conn: sqlite3.Connection, candidates: int = 25) -> WorkingSet:
-        """Pull the best-matching prompts for `question` into the set, within the budget.
+        """Pull the best-matching exchanges for `question` into the set, within the budget.
 
-        Every candidate that doesn't make it is kept in `left_out` with the reason, so the
-        Memory Lab can show what the context window excluded and why.
+        Searches exchange excerpts (your prompt + Claude's reply + what happened next) when
+        they exist, else bare prompts. Every candidate that doesn't make it is kept in
+        `left_out` with the reason, so the Memory Lab can show what was excluded and why.
         """
+        from pompy import excerpts
         from pompy.search import search
 
         self.snippets, self.left_out = [], []
+        use_excerpts = excerpts.count(conn) > 0
         with self.lens(conn):
             in_window = conn.execute("SELECT COUNT(*) FROM prompts").fetchone()[0]
-            hits = search(conn, self.question or "", limit=candidates, tz=self.tz, match_any=True)
-            marks = ",".join("?" * len(hits))
-            texts = dict(
-                conn.execute(
-                    f"SELECT uuid, own_text FROM prompts WHERE uuid IN ({marks})",
-                    [h["uuid"] for h in hits],
-                ).fetchall()
-            )
+            q = self.question or ""
+            if use_excerpts:
+                hits = excerpts.search(conn, q, limit=candidates, tz=self.tz, match_any=True)
+            else:
+                hits = search(conn, q, limit=candidates, tz=self.tz, match_any=True)
+                marks = ",".join("?" * len(hits))
+                texts = dict(
+                    conn.execute(
+                        f"SELECT uuid, own_text FROM prompts WHERE uuid IN ({marks})",
+                        [h["uuid"] for h in hits],
+                    ).fetchall()
+                )
+                for h in hits:
+                    h["prompt"] = texts.get(h["uuid"]) or h["snippet"]
         self.window_counts = {
             "prompts_in_window": in_window,
             "prompts_in_memory": conn.execute("SELECT COUNT(*) FROM main.prompts").fetchone()[0],
@@ -263,10 +279,10 @@ class WorkingSet:
         }
         per_session: dict[str, int] = {}
         for rank, h in enumerate(hits, 1):
-            text = " ".join((texts.get(h["uuid"]) or h["snippet"]).split())
-            if len(text) > SNIPPET_CHARS:
-                text = text[: SNIPPET_CHARS - 1] + "…"
-            tokens = estimate_tokens(text)
+            text = _clip(" ".join(h["prompt"].split()), SNIPPET_CHARS)
+            reply = _clip(h.get("reply") or "", REPLY_SNIPPET_CHARS)
+            outcome = h.get("outcome") or ""
+            tokens = estimate_tokens(text + reply + outcome)
             sid = h["session_id"]
             if per_session.get(sid, 0) >= PER_SESSION_LIMIT:
                 reason = f"already {PER_SESSION_LIMIT} snippets from this chat"
@@ -284,6 +300,8 @@ class WorkingSet:
                         text=text,
                         rank=rank,
                         tokens=tokens,
+                        reply=reply,
+                        outcome=outcome,
                     )
                 )
                 continue
@@ -337,7 +355,11 @@ def render(ws: WorkingSet) -> str:
     ]
     for s in ws.snippets:
         out.append(f"  #{s.rank} {s.local_time}  {s.project}  ~{s.tokens} tok")
-        out.append(f"     {s.text[:160]}{'…' if len(s.text) > 160 else ''}")
+        out.append(f"     You: {s.text[:160]}{'…' if len(s.text) > 160 else ''}")
+        if s.reply:
+            out.append(f"     Claude: {s.reply[:160]}{'…' if len(s.reply) > 160 else ''}")
+        if s.outcome:
+            out.append(f"     Then: {s.outcome}")
     if not ws.snippets:
         out.append("  nothing matched")
     if ws.left_out:

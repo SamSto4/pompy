@@ -160,9 +160,10 @@ def test_a_session_cut_by_the_window_keeps_its_real_opener(conn):
 
 
 def test_retrieve_fills_within_budget_and_says_what_was_left_out(conn):
-    ws = WorkingSet(tz=UTC, question="login button password", budget_tokens=20)
+    # A budget that fits one exchange (prompt + reply + outcome) but not all three candidates.
+    ws = WorkingSet(tz=UTC, question="login button password", budget_tokens=40)
     ws.retrieve(conn)
-    assert ws.snippets and ws.tokens_used <= 20
+    assert ws.snippets and ws.tokens_used <= 40
     assert all(s.session_id == "sess-alpha" for s in ws.snippets)
     assert ws.left_out and all("reason" in x for x in ws.left_out)
     m = ws.manifest()

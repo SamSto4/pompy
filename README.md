@@ -7,7 +7,7 @@ Pompy reads your Claude chat transcripts locally and builds three memory layers 
 - **Pompy Dashboard** (a private artifact inside Claude Code): your keywords, model usage, when you use AI, your recurring patterns, and a Memory Lab that shows what Pompy remembers and why
 - **Pompy Pre-flight** (a Claude Code hook): reviews each prompt as you send it, spots your patterns, and suggests what to add based on your goal in that project
 
-> Status: **Phase 1, building.** Steps 1–8 work: ingest, stats, keywords, search, specificity score, the short-term memory WorkingSet, and the Pompy Dashboard. See the [Roadmap](docs/ROADMAP.md), the [Starter Plan](docs/STARTER_PLAN.md), and the [Hybrid RAG Architecture](docs/RAG_ARCHITECTURE.md).
+> Status: **Phase 2, building.** Phase 1 (Steps 1–8) works: ingest, stats, keywords, search, specificity score, the short-term memory WorkingSet, and the Pompy Dashboard. Phase 2 Step 10 adds exchange excerpts (episodic memory). See the [Roadmap](docs/ROADMAP.md), the [Starter Plan](docs/STARTER_PLAN.md), the [Phase 2 Plan](docs/PHASE2_PLAN.md), and the [Hybrid RAG Architecture](docs/RAG_ARCHITECTURE.md).
 
 ## Why
 1. To get better at prompting, using evidence from your own history.

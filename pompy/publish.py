@@ -241,7 +241,9 @@ def build_bundle(conn: sqlite3.Connection, tz=None, now: datetime | None = None)
     if ws_file.exists():
         working_set = json.loads(ws_file.read_text())
         for s in working_set.get("snippets", []):
-            s["text"] = redact(s["text"])
+            for k in ("text", "reply", "outcome"):
+                if s.get(k):
+                    s[k] = redact(s[k])
             s.pop("session_id", None)
 
     tz_name = st["timezone"]

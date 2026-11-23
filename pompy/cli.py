@@ -33,6 +33,7 @@ def _cmd_ingest(args: argparse.Namespace) -> None:
     kinds = ", ".join(f"{n} {k}" for k, n in s["prompts_by_kind"].items())
     print(f"  {s['prompts']} prompts ({kinds})")
     print(f"  {s['assistant_turns']} assistant messages")
+    print(f"  {report.excerpts} exchange excerpts (prompt + reply + what happened next)")
     if s["events"]:
         print("  friction events: " + ", ".join(f"{n} {k}" for k, n in s["events"].items()))
     if s["first_prompt"]:
@@ -111,6 +112,22 @@ def _cmd_search(args: argparse.Namespace) -> None:
 
     ws = _working_set(args)
     conn = _open_store()
+    if args.exchanges:
+        from pompy import excerpts
+
+        with ws.lens(conn):
+            found = excerpts.search(conn, " ".join(args.query), limit=args.limit, tz=ws.tz)
+        conn.close()
+        if not found:
+            print("No matches. (Run `pompy ingest` to build exchange excerpts.)")
+        for h in found:
+            print(f"{h['local_time']}  {h['header']}")
+            print(f"  You: {h['prompt'][:200]}")
+            if h["reply"]:
+                print(f"  Claude: {h['reply'][:200]}")
+            print(f"  Then: {h['outcome']}")
+            print(f"  ref: {h['session_id']} / {h['uuid']}")
+        return
     with ws.lens(conn):
         hits = search(conn, " ".join(args.query), limit=args.limit, raw=args.raw, tz=ws.tz)
     conn.close()
@@ -229,6 +246,11 @@ def main() -> None:
         "--project", help="only this project: exact name or key, else names containing it"
     )
     p_search.add_argument("--raw", action="store_true", help="pass FTS5 syntax through as-is")
+    p_search.add_argument(
+        "--exchanges",
+        action="store_true",
+        help="search whole exchanges: your prompt, Claude's reply, and what happened next",
+    )
     p_search.add_argument("--tz", help="time zone for dates (default: this Mac's)")
     p_search.set_defaults(func=_cmd_search)
 

@@ -25,6 +25,24 @@ CREATE TABLE IF NOT EXISTS prompt_scores (  -- derived by `pompy score`; recompu
 );
 """
 
+EXCERPTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS excerpts (  -- derived: rebuilt after each ingest
+    id          INTEGER PRIMARY KEY,
+    prompt_uuid TEXT NOT NULL UNIQUE,  -- source reference: the prompt record...
+    session_id  TEXT NOT NULL,         -- ...and its chat
+    ts          TEXT,
+    header      TEXT NOT NULL,
+    prompt      TEXT NOT NULL,
+    reply       TEXT NOT NULL,
+    outcome     TEXT NOT NULL,
+    friction    TEXT NOT NULL,         -- comma-separated friction kinds, '' when none
+    body        TEXT NOT NULL,         -- header + exchange: what the indexes see
+    text_hash   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_excerpts_session ON excerpts(session_id, ts);
+CREATE VIRTUAL TABLE IF NOT EXISTS excerpts_fts USING fts5(body, tokenize='porter unicode61');
+"""
+
 SCHEMA = (
     """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -110,6 +128,7 @@ CREATE INDEX IF NOT EXISTS idx_tool_uses_message ON tool_uses(message_id);
 CREATE INDEX IF NOT EXISTS idx_replies_session ON replies(session_id, ts);
 """
     + PROMPT_SCORES_SCHEMA
+    + EXCERPTS_SCHEMA
 )
 
 
