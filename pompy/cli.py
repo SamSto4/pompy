@@ -344,6 +344,51 @@ def _cmd_preflight(args: argparse.Namespace) -> None:
     preflight.main_hook()
 
 
+def _cmd_similar(args: argparse.Namespace) -> None:
+    import json
+    import sys
+
+    from pompy import excerpts, hybrid, similar
+
+    text = " ".join(args.text) if args.text else sys.stdin.read()
+    if not text.strip():
+        raise SystemExit('Give a prompt: pompy similar "fix the nav bar" (or pipe it in).')
+    conn = _open_store()
+    if not excerpts.count(conn):
+        conn.close()
+        raise SystemExit("No exchange excerpts yet. Run `pompy ingest` first.")
+    embedder = None if args.keyword else hybrid.default_embedder(conn)
+    result = similar.similar(conn, text, embedder, limit=args.limit)
+    conn.close()
+    print(json.dumps(result) if args.json else similar.render(result))
+
+
+def _cmd_refresh(args: argparse.Namespace) -> None:
+    """The warm path in one command: new lines in, meaning index and profile up to date."""
+    import contextlib
+    import importlib.util
+    import io
+
+    from pompy import embed, preflight, score
+    from pompy.ingest import ingest
+
+    start = time.perf_counter()
+    report = ingest(config.source_dir(), config.data_dir())
+    conn = _open_store()
+    embedded = 0
+    if importlib.util.find_spec("fastembed") is not None:
+        with contextlib.redirect_stderr(io.StringIO()):  # the model's progress bars
+            embedded = embed.update(conn, embed.FastEmbedder())["embedded"]
+    preflight.write_profile(preflight.build_profile(score.compute(conn)), config.out_dir())
+    conn.close()
+    if not args.quiet:
+        print(
+            f"Pompy refreshed in {time.perf_counter() - start:.1f}s: "
+            f"{report.new['prompt']} new prompts, {report.excerpts} exchanges, "
+            f"{embedded} newly embedded."
+        )
+
+
 def _cmd_check(args: argparse.Namespace) -> None:
     from pompy import score
 
@@ -468,6 +513,21 @@ def main() -> None:
     p_pre.add_argument("--on", action="store_true", help="turn it back on")
     p_pre.add_argument("--bench", type=int, metavar="N", help="time N runs as a fresh process")
     p_pre.set_defaults(func=_cmd_preflight)
+
+    p_similar = sub.add_parser(
+        "similar", help="past exchanges like a prompt, and what happened after them"
+    )
+    p_similar.add_argument("text", nargs="*", help="the prompt (or pipe it in on stdin)")
+    p_similar.add_argument("--limit", type=int, default=5)
+    p_similar.add_argument("--keyword", action="store_true", help="skip the meaning model")
+    p_similar.add_argument("--json", action="store_true", help="print the raw JSON")
+    p_similar.set_defaults(func=_cmd_similar)
+
+    p_refresh = sub.add_parser(
+        "refresh", help="ingest new chats, embed new exchanges, update the profile (warm path)"
+    )
+    p_refresh.add_argument("--quiet", action="store_true", help="print nothing (for hooks)")
+    p_refresh.set_defaults(func=_cmd_refresh)
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")

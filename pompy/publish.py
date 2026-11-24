@@ -153,6 +153,50 @@ def habits(sc: dict, rows: list[dict], cmp_rows: dict, top: int = 3) -> list[dic
 # ── The bundle ───────────────────────────────────────────────────────────────
 
 
+NEIGHBOURS = 3  # similar prompts per prompt, by meaning, precomputed for the page
+
+
+def _neighbours(conn: sqlite3.Connection, uuids: set[str]) -> dict[str, list[str]]:
+    """For each prompt, the prompts closest in meaning (from other chats when possible).
+
+    The page can't run the embedding model, so this is precomputed at publish time from the
+    meaning index (the model with the most vectors). Empty without embeddings or NumPy.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return {}
+    try:
+        row = conn.execute(
+            "SELECT model FROM embeddings GROUP BY model ORDER BY COUNT(*) DESC LIMIT 1"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return {}
+    if not row:
+        return {}
+    vecs = conn.execute(
+        "SELECT m.prompt_uuid, e.session_id, m.vector FROM embeddings m "
+        "JOIN excerpts e ON e.prompt_uuid = m.prompt_uuid AND e.text_hash = m.text_hash "
+        "WHERE m.model = ?",
+        (row[0],),
+    ).fetchall()
+    vecs = [v for v in vecs if v[0] in uuids]
+    if len(vecs) < 2:
+        return {}
+    ids = [v[0] for v in vecs]
+    chats = [v[1] for v in vecs]
+    matrix = np.stack([np.frombuffer(v[2], dtype=np.float32) for v in vecs])
+    sims = matrix @ matrix.T
+    np.fill_diagonal(sims, -1.0)
+    out = {}
+    for i, uuid in enumerate(ids):
+        order = np.argsort(-sims[i])
+        other_chat = [j for j in order if chats[j] != chats[i]]
+        same_chat = [j for j in order if chats[j] == chats[i] and j != i]
+        out[uuid] = [ids[j] for j in (other_chat + same_chat)[:NEIGHBOURS]]
+    return out
+
+
 def _prompt_rows(conn: sqlite3.Connection, tz) -> list[dict]:
     conn.row_factory = sqlite3.Row
     scores = {r["uuid"]: r for r in conn.execute("SELECT * FROM prompt_scores")}
@@ -227,6 +271,11 @@ def build_bundle(conn: sqlite3.Connection, tz=None, now: datetime | None = None)
     kws = keywords.compute(conn, ws)
     sc = score.compute(conn, ws)  # all-time: also refreshes prompt_scores
     rows = _prompt_rows(conn, tz)
+    # Among task prompts only: a bare "yes" or "commit" is no useful neighbour.
+    neighbours = _neighbours(conn, {r["u"] for r in rows if r["r"] == "task"})
+    for r in rows:
+        if r["u"] in neighbours:
+            r["nb"] = neighbours[r["u"]]
 
     month = WorkingSet(window=parse_period("this-month", tz, now=now), tz=tz)
     try:

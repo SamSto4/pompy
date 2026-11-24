@@ -228,6 +228,17 @@
   function detail(r) {
     const box = h("div", { class: "detail" }, h("div", { class: "full", text: r.t }));
     if (r.q) box.append(h("p", { class: "small" }, h("b", { text: "Claude had to ask: " }), r.q));
+    const like = (r.nb || []).map((u) => P.byId.get(u)).filter(Boolean);
+    if (like.length) {
+      const wrong = like.filter((x) => x.fr.length).length;
+      box.append(
+        h("h3", { text: "Prompts like this" }),
+        h("p", { class: "small muted", text: wrong ? `${wrong} of ${like.length} went wrong after.` : `All ${like.length} went fine.` }),
+        h("ul", { class: "like-list" }, like.map((x) =>
+          h("li", {}, h("span", { class: x.fr.length ? "worse" : "better", text: x.fr.length ? "✕ " : "✓ " }),
+            h("span", { text: x.t.length > 120 ? x.t.slice(0, 119) + "…" : x.t }),
+            h("span", { class: "muted small", text: `  ${P.when(x)}${x.fr.length ? " · " + P.FRICTION_LABEL[x.fr[0]] : ""}` })))));
+    }
     if (r.r === "task") {
       box.append(h("h3", { text: "How to improve it" }), analysis(r, P.D.rules.features.find((f) => !r.f.includes(f.name))?.name));
       const missing = P.D.rules.features.map((f) => f.name).filter((n) => !r.f.includes(n));

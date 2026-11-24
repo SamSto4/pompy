@@ -100,3 +100,23 @@ def test_snapshot_date_is_local(tmp_path):
     now = datetime(2026, 11, 30, 20, 0, tzinfo=UTC)  # already 1 December in India
     data = publish.build_bundle(conn, ZoneInfo("Asia/Kolkata"), now=now)
     assert data["meta"]["today"] == "2026-12-01"
+
+
+def test_prompts_carry_meaning_neighbours_when_embeddings_exist(tmp_path, monkeypatch):
+    from fakes import FakeEmbedder
+
+    from pompy import embed, excerpts
+
+    monkeypatch.setenv("POMPY_OUT", str(tmp_path / "out"))
+    shutil.copytree(FIXTURES / "projects", tmp_path / "projects")
+    ingest(tmp_path / "projects", tmp_path / "data")
+    conn = sqlite3.connect(tmp_path / "data" / "pompy.db")
+    excerpts.build(conn, ZoneInfo("UTC"))
+    embed.update(conn, FakeEmbedder())
+    data = publish.build_bundle(conn, ZoneInfo("UTC"))
+    conn.close()
+    rows = {r["u"]: r for r in data["prompts"]}
+    with_nb = [r for r in rows.values() if r.get("nb")]
+    assert with_nb and all(r["r"] == "task" for r in with_nb)
+    for r in with_nb:
+        assert r["u"] not in r["nb"] and all(rows[u]["r"] == "task" for u in r["nb"])

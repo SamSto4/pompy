@@ -69,12 +69,19 @@ Embeddings are optional: `pip install -e ".[memory]"`. Without them every comman
 - **First real run:** 29 cards: 12 shipped, 10 changed files, 6 talk only, 1 stopped after friction. Asking "login with google not working" finds the right chat and cites the exact exchange.
 - **Parsing fix (schema v5):** app-injected messages were counting as your prompts. An artifact comment sent to Claude now keeps only your quoted comment (source `artifact_comment`), and Claude Code's "A pull request was just created…" note is dropped. The store rebuilt itself from the raw copies on the next ingest (1.1 s): 10 comments cleaned, 1 note removed, 28 cards. A rebuild drops the meaning index, so run `pompy embed` after it.
 
-### Step 14: Pre-flight v1 and the Dashboard
+### Step 14: Pre-flight v1 and the Dashboard ✅
 - **Notch:** "Prompts like this one" from your history, with what happened after ("3 of 5 needed a correction"). Hot path rule kept: the notch reads a precomputed neighbour file; no model runs while you type.
 - **Warm path:** a `SessionEnd` hook starts `pompy ingest && pompy embed` in the background.
 - **Dashboard:** Ask your memory shows hybrid picks and why each was chosen; Ask Pompy shows similar past prompts by meaning.
 - **Done when:** typing a prompt shows a relevant past exchange within the hot-path budget.
 - 🧠 *Learning:* episodic recall in real time: heavy work ahead of time, a cheap lookup at the moment of use.
+- **Rule learned the hard way:** Pompy never holds a prompt. A blocking Pre-flight hook (Step 9) was installed and then removed at the user's request: holding prompts cost more than it helped, and questions were caught too. Everything below appears *after* a prompt is sent, or on the dashboard.
+- **Built:**
+  - `pompy similar` (`pompy/similar.py`): the past exchanges most like a prompt (hybrid search), how many went wrong, by what kind of friction, and one rule-based lesson when at least two went wrong ("These often broke afterwards. Say how you'll check that it works."). 0.3 s including the model.
+  - `pompy refresh`: the warm path in one command (ingest new lines, embed new exchanges, update the profile); about 1 s on a normal day. A `SessionEnd` hook could run it; not installed.
+  - The notch (a local Claude Code mod, outside this repo) runs `pompy similar` in the background after each task prompt you send and shows "Like this before: 3 of 5 went wrong. <lesson>" with one example.
+  - Dashboard: `pompy publish` precomputes each task prompt's 3 nearest prompts by meaning (other chats first; the page can't run the model), and the Prompts page shows "Prompts like this" with how each went.
+- **Honest limit:** neighbours by meaning are plausible but mixed (an edit-the-powerpoint prompt sits near "alright lets continue"); the small local model and the shared context header both blur short prompts. Step 12's eval is the tool for testing a fix (for example embedding without the header).
 
 ### Step 15: Theme clustering
 - Cluster excerpt embeddings into your recurring themes; label each with its top keywords. Shown in the Dashboard's Overview.
