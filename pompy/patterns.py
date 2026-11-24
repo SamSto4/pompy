@@ -142,6 +142,83 @@ def record(
     return {"id": pid, "status": status, "confidence": confidence}
 
 
+def record_fact(
+    conn: sqlite3.Connection,
+    *,
+    key: str,
+    statement: str,
+    scope: str,
+    kind: str,
+    evidence: list[str],
+    confidence: float,
+    last_seen: str,
+    note: str = "",
+    now: datetime | None = None,
+) -> dict:
+    """Store a descriptive fact (a project's goal, a preference), cited by its exchanges.
+
+    A fact is not a tested claim: it is "supported" by the episodes it summarises, and its
+    `last_confirmed` is when those episodes last happened, so a project you stop working on
+    fades and eventually retires like any unconfirmed pattern.
+    """
+    conn.executescript(SCHEMA)
+    at = _now(now).isoformat(timespec="seconds")
+    stats = json.dumps({"effect": 0.0, "n_a": len(evidence), "n_b": 0, "p": 1.0, "q": 1.0,
+                        "rate_a": 0.0, "rate_b": 0.0, "note": note})  # fmt: skip
+    old = conn.execute("SELECT id FROM patterns WHERE key = ?", (key,)).fetchone()
+    if old:
+        pid = old[0]
+        conn.execute(
+            "UPDATE patterns SET statement=?, scope=?, kind=?, source='agent', status='supported', "
+            "confidence=?, stats=?, last_checked=?, last_confirmed=? WHERE id=?",
+            (statement, scope, kind, confidence, stats, at, last_seen, pid),
+        )
+    else:
+        pid = conn.execute(
+            "INSERT INTO patterns (key, statement, scope, kind, source, status, confidence, stats, "
+            "first_seen, last_checked, last_confirmed) "
+            "VALUES (?,?,?,?,'agent','supported',?,?,?,?,?)",
+            (key, statement, scope, kind, confidence, stats, at, at, last_seen),
+        ).lastrowid
+    conn.execute("DELETE FROM pattern_evidence WHERE pattern_id = ?", (pid,))
+    conn.executemany(
+        "INSERT OR IGNORE INTO pattern_evidence (pattern_id, prompt_uuid, stance) "
+        "VALUES (?,?,'supports')",
+        [(pid, u) for u in evidence],
+    )
+    conn.execute(
+        "INSERT INTO pattern_history (pattern_id, at, status, confidence) VALUES (?,?,?,?)",
+        (pid, at, "supported", decayed(confidence, last_seen, now)),
+    )
+    conn.commit()
+    return {"id": pid, "status": "supported", "confidence": confidence}
+
+
+def retire_unconfirmed_hypotheses(
+    conn: sqlite3.Connection, days: int, now: datetime | None = None
+) -> list[str]:
+    """Retire agent hypotheses no later run re-checked within `days`. Returns their keys."""
+    conn.executescript(SCHEMA)
+    cutoff = _now(now).timestamp() - days * 86400
+    at = _now(now).isoformat(timespec="seconds")
+    retired = []
+    for pid, key, checked in conn.execute(
+        "SELECT id, key, last_checked FROM patterns "
+        "WHERE source = 'agent' AND status = 'hypothesis'"
+    ).fetchall():
+        if datetime.fromisoformat(checked).timestamp() < cutoff:
+            conn.execute(
+                "UPDATE patterns SET status='retired', last_checked=? WHERE id=?", (at, pid)
+            )
+            conn.execute(
+                "INSERT INTO pattern_history (pattern_id, at, status, confidence) VALUES (?,?,?,?)",
+                (pid, at, "retired", 0.0),
+            )
+            retired.append(key)
+    conn.commit()
+    return retired
+
+
 def decayed(confidence: float, last_confirmed: str | None, now: datetime | None = None) -> float:
     """Confidence today: halves for every HALF_LIFE_DAYS since the pattern was last confirmed."""
     if not last_confirmed:

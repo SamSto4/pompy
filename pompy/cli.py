@@ -500,6 +500,61 @@ def _cmd_think(args: argparse.Namespace) -> None:
     print(think.render(run, args.model))
 
 
+def _api_client():
+    """An Anthropic client, or exit with how to set up the key."""
+    import os
+
+    from pompy import think
+
+    think.load_env()
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise SystemExit("No ANTHROPIC_API_KEY (put it in the git-ignored .env, or export it).")
+    try:
+        import anthropic
+    except ImportError:
+        raise SystemExit('Needs the SDK: pip install -e ".[agent]"') from None
+    return anthropic.Anthropic()
+
+
+def _cmd_facts(args: argparse.Namespace) -> None:
+    from pompy import facts
+
+    conn = _open_store()
+    found = facts.projects(conn)
+    if args.dry_run:
+        for p in found:
+            print(facts.brief(p) + "\n")
+        print(f"{len(found)} projects would be summarised by {args.model}. Dry run: nothing sent.")
+        conn.close()
+        return
+    client = _api_client()
+    result = facts.refresh(conn, client, args.model)
+    conn.close()
+    for p in result["projects"]:
+        print(f"{p['project']}: {p['goal']}")
+        for pref in p["preferences"]:
+            print(f"  · {pref}")
+    u = result["usage"]
+    print(f"\n{len(result['projects'])} projects, {u['input']} tokens in, {u['output']} out.")
+
+
+def _cmd_consolidate(args: argparse.Namespace) -> None:
+    from zoneinfo import ZoneInfo
+
+    from pompy import consolidate, facts
+
+    conn = _open_store()
+    client = _api_client() if args.facts else None
+    result = consolidate.consolidate(
+        conn,
+        ZoneInfo(args.tz) if args.tz else None,
+        facts_client=client,
+        facts_model=facts.DEFAULT_MODEL,
+    )
+    conn.close()
+    print(consolidate.render(result))
+
+
 def _cmd_check(args: argparse.Namespace) -> None:
     from pompy import score
 
@@ -663,6 +718,18 @@ def main() -> None:
     p_think.add_argument("--model", default="claude-opus-5-5")
     p_think.add_argument("--effort", default="high", choices=("low", "medium", "high", "xhigh"))
     p_think.set_defaults(func=_cmd_think)
+
+    p_facts = sub.add_parser("facts", help="each project's goal and your preferences (API key)")
+    p_facts.add_argument("--dry-run", action="store_true", help="show what would be sent")
+    p_facts.add_argument("--model", default="claude-haiku-5-5")
+    p_facts.set_defaults(func=_cmd_facts)
+
+    p_cons = sub.add_parser(
+        "consolidate", help="re-check patterns, fade and retire stale ones, report changes"
+    )
+    p_cons.add_argument("--facts", action="store_true", help="also refresh project facts (API)")
+    p_cons.add_argument("--tz", help="time zone for time-of-day claims (default: this Mac's)")
+    p_cons.set_defaults(func=_cmd_consolidate)
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")

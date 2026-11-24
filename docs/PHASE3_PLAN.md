@@ -41,10 +41,16 @@ The steps that need no API key come first. The Claude-powered agent (Step 18) wa
   - `pompy patterns` now shows agent hypotheses as "not yet tested by statistics" instead of empty rates.
 - 🧠 *Learning:* the agent's value showed up exactly where the miner's could not. It found claims about *situations* (a plan request mixed with build instructions; routing changes checked by type check alone), not about missing rubric parts. And it ruled ideas out using counter-examples, not just in favour of them.
 
-### Step 19: Consolidation into facts, and decay
+### Step 19: Consolidation into facts, and decay ✅
 - A schedule (`pompy consolidate`): re-check every pattern against new episodes; confidence decays with time since last confirmation; patterns below a floor retire.
 - Project facts: each project's goal and your preferences there, from its episode cards (Haiku, with the key).
 - **Done when:** a pattern that stops showing up visibly fades and retires in a fixture timeline.
+- **Built:**
+  - `pompy/facts.py`, `pompy facts` (`--dry-run` shows each project brief and sends nothing). For each project with at least 2 chats and 5 exchanges, one structured-output call (`claude-haiku-5-5`, JSON schema) returns its goal and up to 3 preferences that recur across chats. Each is stored as a fact citing the chats' first exchanges. Briefs pass through the same redaction as the dashboard, so home paths, keys and emails never leave the Mac as typed. A preference that stops recurring is retired.
+  - Facts start at a confidence set by how many chats back them, and their `last_confirmed` is the project's last activity, so they fade with the same 90-day half-life as patterns and retire below 0.15.
+  - `pompy/consolidate.py`, `pompy consolidate` (`--facts` to refresh project facts with the API): re-checks the statistical claims, retires agent hypotheses not re-checked within 180 days, fades and retires stale patterns and facts, and reports what is new, strengthened, weakened and retired.
+- **First real pass:** 6 project goals for about $0.001 (Haiku, 4.3k tokens in). No recurring preferences yet. Fading already shows: projects last active in September sit near 0.20, against 0.48 for one active last week.
+- 🧠 *Learning:* forgetting is a feature. A memory that only grows keeps confident facts about projects you abandoned. Here every fact has to be re-earned by new episodes or let go.
 
 ### Step 20: Showing what Pompy has learned
 - Dashboard: "What Pompy has learned": each pattern, its confidence, and the evidence on both sides. Memory Lab: watch a pattern's confidence over time.
