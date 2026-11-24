@@ -389,6 +389,32 @@ def _cmd_refresh(args: argparse.Namespace) -> None:
         )
 
 
+def _cmd_themes(args: argparse.Namespace) -> None:
+    import contextlib
+    import io
+    import json
+
+    from pompy import excerpts, hybrid, themes
+
+    conn = _open_store()
+    if not excerpts.count(conn):
+        conn.close()
+        raise SystemExit("No exchange excerpts yet. Run `pompy ingest` first.")
+    embedder = hybrid.default_embedder(conn)
+    if embedder is None:
+        conn.close()
+        raise SystemExit(
+            'Themes need the meaning model: pip install -e ".[memory]", then pompy embed.'
+        )
+    with contextlib.redirect_stderr(io.StringIO()):
+        result = themes.compute(conn, embedder, k=args.k)
+    conn.close()
+    out = config.out_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "themes.json").write_text(json.dumps(result, indent=1))
+    print(json.dumps(result, indent=1) if args.json else themes.render(result))
+
+
 def _cmd_check(args: argparse.Namespace) -> None:
     from pompy import score
 
@@ -528,6 +554,11 @@ def main() -> None:
     )
     p_refresh.add_argument("--quiet", action="store_true", help="print nothing (for hooks)")
     p_refresh.set_defaults(func=_cmd_refresh)
+
+    p_themes = sub.add_parser("themes", help="cluster your task prompts into recurring themes")
+    p_themes.add_argument("--k", type=int, help="number of themes (default: chosen by silhouette)")
+    p_themes.add_argument("--json", action="store_true", help="print the raw JSON")
+    p_themes.set_defaults(func=_cmd_themes)
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")

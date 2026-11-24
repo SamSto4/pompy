@@ -83,9 +83,16 @@ Embeddings are optional: `pip install -e ".[memory]"`. Without them every comman
   - Dashboard: `pompy publish` precomputes each task prompt's 3 nearest prompts by meaning (other chats first; the page can't run the model), and the Prompts page shows "Prompts like this" with how each went.
 - **Honest limit:** neighbours by meaning are plausible but mixed (an edit-the-powerpoint prompt sits near "alright lets continue"); the small local model and the shared context header both blur short prompts. Step 12's eval is the tool for testing a fix (for example embedding without the header).
 
-### Step 15: Theme clustering
+### Step 15: Theme clustering ✅
 - Cluster excerpt embeddings into your recurring themes; label each with its top keywords. Shown in the Dashboard's Overview.
 - 🧠 *Learning:* unsupervised structure in episodic memory, the first step toward long-term memory (Phase 3).
+- **Built:** `pompy/themes.py`, `pompy themes` (writes `out/themes.json`). Themes cluster **prompt-only** vectors (stored as `<model>#prompt`, kept apart from the search index), because the exchange vectors carry a context header that names the project and would group by project. Spherical k-means (k-means++ start, fixed seed), k chosen by silhouette over 4–10, themes named by their most distinctive words. Each theme reports its size, how often something went wrong, the most common friction, mean specificity and central examples. The dashboard's Overview shows them as "What you ask Claude about", with the theme that goes wrong most called out.
+- **First real run** (282 task prompts, 10 themes): the login / nav-bar theme goes wrong most (26%); "status update when done" prompts are the least specific (0.79/7); the largest theme (agents and models, 32%) sits near average.
+- **What the numbers say about the method:** silhouette is low and flat (0.09–0.11 for every k from 4 to 20). Your prompts don't fall into natural clusters; they form a continuum. Themes are a useful map for spotting where you struggle, not hard categories, and the dashboard says so.
+
+## Phase 2: done
+
+Episodic memory (exchange excerpts and episode cards), meaning search, hybrid retrieval with a measured eval, recall after each prompt, and themes all work. Phase 3 (long-term memory: hypotheses with supporting and contradicting evidence, consolidation into facts that strengthen and fade) builds on them; it needs the Claude API key in `.env` for the hypothesis agent.
 
 ## Privacy
 Excerpts, embeddings and cards live in `data/pompy.db` (git-ignored). The model files live in the user cache, outside the repo. Tests use synthetic fixtures and a fake embedder, so CI never downloads a model.

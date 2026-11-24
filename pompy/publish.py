@@ -168,7 +168,8 @@ def _neighbours(conn: sqlite3.Connection, uuids: set[str]) -> dict[str, list[str
         return {}
     try:
         row = conn.execute(
-            "SELECT model FROM embeddings GROUP BY model ORDER BY COUNT(*) DESC LIMIT 1"
+            "SELECT model FROM embeddings WHERE model NOT LIKE '%#%' "
+            "GROUP BY model ORDER BY COUNT(*) DESC LIMIT 1"
         ).fetchone()
     except sqlite3.OperationalError:
         return {}
@@ -285,6 +286,23 @@ def build_bundle(conn: sqlite3.Connection, tz=None, now: datetime | None = None)
         cmp = None
     cmp_rows = {r["key"]: r for r in cmp["rows"]} if cmp else {}
 
+    themes = None
+    th_file = config.out_dir() / "themes.json"
+    if th_file.exists():
+        th = json.loads(th_file.read_text())
+        themes = [
+            {
+                "label": t["label"],
+                "size": t["size"],
+                "share_pct": t["share_pct"],
+                "went_wrong_pct": t["went_wrong_pct"],
+                "mean_score": t["mean_score"],
+                "top_friction": t["top_friction"],
+                "example": _clip(redact(t["examples"][0]["prompt"]), 160) if t["examples"] else "",
+            }
+            for t in th.get("themes", [])
+        ]
+
     working_set = None
     ws_file = config.out_dir() / "working_set.json"
     if ws_file.exists():
@@ -331,6 +349,7 @@ def build_bundle(conn: sqlite3.Connection, tz=None, now: datetime | None = None)
         "working_set": working_set,
         "rules": export_rules(),
         "prompts": rows,
+        "themes": themes,
     }
 
 

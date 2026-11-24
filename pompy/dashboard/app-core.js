@@ -218,6 +218,7 @@
         tile("Peak time", `${st.time.peak_weekday} ${String(st.time.peak_hour).padStart(2, "0")}:00`, `${st.time.active_days} active days`)),
       dayTimeline(),
       monthly(),
+      themesPanel(),
       h("div", { class: "grid2" },
         P.panel("Specificity of your task prompts", "how many of the 7 rubric parts each prompt had",
           P.bars(sc.score.distribution.map((n, i) => ({ name: `${i} of 7 parts`, value: n }))),
@@ -369,6 +370,27 @@
       if (!months.includes(k)) out.push(k);
     }
     return out;
+  }
+
+  // What you keep asking about, and how each theme tends to go (from `pompy themes`).
+  function themesPanel() {
+    const th = P.D.themes;
+    if (!th || !th.length) return null;
+    const maxSize = Math.max(...th.map((t) => t.size));
+    const worst = [...th].filter((t) => t.size >= 10).sort((a, b) => b.went_wrong_pct - a.went_wrong_pct)[0];
+    const rows = th.map((t) => {
+      const name = t.label.length ? t.label.join(" · ") : "short replies and one-liners";
+      const tone = t.went_wrong_pct >= 20 ? "bad" : t.went_wrong_pct >= 12 ? "mid" : "good";
+      return h("div", { class: "theme-row", title: t.example ? `e.g. "${t.example}"` : "" },
+        h("div", { class: "theme-name" }, h("b", { text: name }), h("span", { class: "muted small", text: ` ${t.size} prompts` })),
+        h("div", { class: "bar-track" }, h("div", { class: "bar-fill", style: `width:${Math.max(2, (100 * t.size) / maxSize)}%` })),
+        h("span", { class: "chip theme-" + tone, text: `${Math.round(t.went_wrong_pct)}% went wrong` }),
+        h("span", { class: "muted small mono", text: `${t.mean_score}/7` }));
+    });
+    return P.panel("What you ask Claude about", "your task prompts, grouped by meaning",
+      worst ? h("p", { class: "note", text: `Most trouble: "${worst.label.join(" · ")}". ${Math.round(worst.went_wrong_pct)}% of those prompts went wrong. Be most specific there.` }) : null,
+      h("div", { class: "themes" }, rows),
+      h("p", { class: "small muted", text: "Hover a theme for an example. Themes overlap: your prompts form a continuum, so treat these as a map, not hard categories." }));
   }
 
   function keywordsPanel() {
