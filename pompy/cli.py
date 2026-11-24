@@ -415,6 +415,43 @@ def _cmd_themes(args: argparse.Namespace) -> None:
     print(json.dumps(result, indent=1) if args.json else themes.render(result))
 
 
+def _cmd_mine(args: argparse.Namespace) -> None:
+    from zoneinfo import ZoneInfo
+
+    from pompy import excerpts, mine
+
+    conn = _open_store()
+    if not excerpts.count(conn):
+        conn.close()
+        raise SystemExit("No exchange excerpts yet. Run `pompy ingest` first.")
+    result = mine.mine(conn, ZoneInfo(args.tz) if args.tz else None)
+    conn.close()
+    print(mine.render(result, show=len(result["results"]) if args.all else 12))
+
+
+def _cmd_patterns(args: argparse.Namespace) -> None:
+    from pompy import patterns
+
+    conn = _open_store()
+    found = patterns.load(conn, status=None if args.all else "supported")
+    conn.close()
+    if not found:
+        print("No supported patterns yet. Run `pompy mine` (or add --all to see every hypothesis).")
+    for p in found[: args.limit]:
+        s = p["stats"]
+        print(f"[{p['status']}] {p['statement']}")
+        print(
+            f"  {s['rate_a']:.0%} vs {s['rate_b']:.0%} went wrong (n = {s['n_a']} vs {s['n_b']}), "
+            f"q {s['q']:.3f}; confidence now {p['confidence_now']:.2f}, "
+            f"checked {len(p['history'])} time(s), since {p['first_seen'][:10]}"
+        )
+        for label, items in (("supports", p["supports"]), ("contradicts", p["contradicts"])):
+            for e in items[: args.evidence]:
+                sign = "+" if label == "supports" else "-"
+                print(f"    {sign} {e['prompt'][:100]}  → {e['outcome']}")
+        print()
+
+
 def _cmd_check(args: argparse.Namespace) -> None:
     from pompy import score
 
@@ -559,6 +596,17 @@ def main() -> None:
     p_themes.add_argument("--k", type=int, help="number of themes (default: chosen by silhouette)")
     p_themes.add_argument("--json", action="store_true", help="print the raw JSON")
     p_themes.set_defaults(func=_cmd_themes)
+
+    p_mine = sub.add_parser("mine", help="test hypotheses about your prompts; keep what holds")
+    p_mine.add_argument("--tz", help="time zone for time-of-day claims (default: this Mac's)")
+    p_mine.add_argument("--all", action="store_true", help="list every claim tested")
+    p_mine.set_defaults(func=_cmd_mine)
+
+    p_patterns = sub.add_parser("patterns", help="what Pompy has learned, with evidence")
+    p_patterns.add_argument("--all", action="store_true", help="include unproven and retired")
+    p_patterns.add_argument("--limit", type=int, default=10)
+    p_patterns.add_argument("--evidence", type=int, default=2, help="excerpts to show per side")
+    p_patterns.set_defaults(func=_cmd_patterns)
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")
