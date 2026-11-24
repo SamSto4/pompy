@@ -31,6 +31,7 @@ MAX_OUTPUT_TOKENS = 16000
 MAX_PROPOSALS = 3
 MIN_SUPPORT = 3
 MIN_CONTRADICT = 1
+STATEMENT_CHARS = 220
 # USD per million tokens: input, output, cache read, cache write (5-minute TTL is 1.25x input).
 PRICES = {
     "claude-opus-5-5": (4.00, 20.00, 0.20, 5.00),
@@ -56,7 +57,8 @@ assumed Claude knew, what happened just before, how a chat ended.
 `get_episode_card` to see the chat it belongs to, `list_patterns` to see what is known.
 - Before proposing, search deliberately for counter-examples: exchanges that fit the \
 pattern's condition but went fine, or that lack it and still went wrong.
-- `propose_pattern` needs a short, testable statement in plain words, its scope, your \
+- `propose_pattern` needs a testable statement in plain words (ONE sentence, at most 200 \
+characters; put the detail in the rationale), its scope, your \
 reasoning, at least 3 supporting and at least 1 contradicting exchange ids, all taken from \
 tool results in this session. Propose at most 3 patterns. Fewer, better-supported ones beat \
 many weak ones; proposing none is acceptable if nothing holds.
@@ -74,7 +76,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "What to look for."},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 10},
+                "limit": {"type": "integer", "description": "1 to 10 (default 8)."},
             },
             "required": ["query"],
             "additionalProperties": False,
@@ -207,9 +209,8 @@ def _excerpt_view(h: dict) -> dict:
 def run_tool(conn: sqlite3.Connection, embedder, run: Run, name: str, args: dict, now=None):
     """Execute one tool call. Returns (result_text, is_error)."""
     if name == "search":
-        hits = hybrid.search(
-            conn, args["query"], embedder, limit=min(int(args.get("limit", 8)), 10)
-        )
+        limit = max(1, min(int(args.get("limit") or 8), 10))  # strict schemas cannot bound it
+        hits = hybrid.search(conn, args["query"], embedder, limit=limit)
         views = [_excerpt_view(h) for h in hits]
         run.seen.update(v["id"] for v in views)
         run.excerpts_sent += len(views)
@@ -272,7 +273,9 @@ def _propose(conn: sqlite3.Connection, run: Run, args: dict, now) -> tuple[str, 
         )
     if set(sup) & set(con):
         return "An exchange cannot both support and contradict the same pattern.", True
-    statement = " ".join(args["statement"].split())[:240]
+    statement = " ".join(args["statement"].split())
+    if len(statement) > STATEMENT_CHARS:  # trim at a word, never mid-word
+        statement = statement[:STATEMENT_CHARS].rsplit(" ", 1)[0].rstrip(",;:") + "…"
     key = "agent:" + "-".join(statement.lower().split())[:80]
     stats = {"effect": 0.0, "n_a": len(sup), "n_b": len(con), "p": 1.0, "q": 1.0,
              "rate_a": 0.0, "rate_b": 0.0, "rationale": args["rationale"][:600]}  # fmt: skip
@@ -333,6 +336,10 @@ def think(
             tools=TOOLS,
             messages=messages,
             output_config={"effort": effort},
+            # Cache the whole growing conversation, not just the instructions: each turn
+            # re-sends everything before it, and the first real run paid full price for
+            # 96% of its 828k input tokens because only the instructions were cached.
+            cache_control={"type": "ephemeral"},
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
         )

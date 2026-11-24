@@ -105,6 +105,7 @@ def test_instructions_and_tools_are_cached_and_refusals_fall_back(conn):
     think.think(conn, client, embedder=None)
     first = client.requests[0]
     assert first["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert first["cache_control"] == {"type": "ephemeral"}  # the growing conversation too
     assert first["fallbacks"] == "default" and first["model"] == "claude-opus-5-5"
     assert first["messages"][0]["content"].startswith("Briefing:")
     assert all(t["strict"] for t in first["tools"])
@@ -138,3 +139,25 @@ def test_the_env_file_is_read_without_overriding_the_environment(tmp_path, monke
 
     assert os.environ["POMPY_TEST_KEY"] == "from-file"
     assert os.environ["POMPY_OTHER"] == "already-set"
+
+
+def test_strict_tool_schemas_use_only_supported_keywords():
+    # Strict tool use rejects numeric bounds (minimum/maximum) on integer properties.
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("type") == "integer":
+                assert not {"minimum", "maximum"} & set(node), node
+            for v in node.values():
+                walk(v)
+
+    for tool in think.TOOLS:
+        walk(tool["input_schema"])
+
+
+def test_long_statements_are_trimmed_at_a_word(conn):
+    run = think.Run(seen={"a-u1", "a-u9", "b-u3", "b-u1"})
+    long = "When a prompt asks for a plan " + "and also lists many changes " * 20
+    think.run_tool(conn, None, run, "propose_pattern", {**GOOD, "statement": long})
+    stored = run.proposed[0]["statement"]
+    assert len(stored) <= think.STATEMENT_CHARS + 1 and stored.endswith("…")
+    assert not stored[:-1].endswith(" ")

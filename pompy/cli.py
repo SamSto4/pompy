@@ -440,11 +440,21 @@ def _cmd_patterns(args: argparse.Namespace) -> None:
     for p in found[: args.limit]:
         s = p["stats"]
         print(f"[{p['status']}] {p['statement']}")
-        print(
-            f"  {s['rate_a']:.0%} vs {s['rate_b']:.0%} went wrong (n = {s['n_a']} vs {s['n_b']}), "
-            f"q {s['q']:.3f}; confidence now {p['confidence_now']:.2f}, "
-            f"checked {len(p['history'])} time(s), since {p['first_seen'][:10]}"
-        )
+        if p["source"] == "agent":
+            print(
+                f"  from pompy think: {len(p['supports'])} supporting and "
+                f"{len(p['contradicts'])} contradicting exchanges; not yet tested by "
+                f"statistics (since {p['first_seen'][:10]})"
+            )
+            if s.get("rationale"):
+                print(f"  why: {s['rationale'][:200]}")
+        else:
+            print(
+                f"  {s['rate_a']:.0%} vs {s['rate_b']:.0%} went wrong "
+                f"(n = {s['n_a']} vs {s['n_b']}), q {s['q']:.3f}; "
+                f"confidence now {p['confidence_now']:.2f}, "
+                f"checked {len(p['history'])} time(s), since {p['first_seen'][:10]}"
+            )
         for label, items in (("supports", p["supports"]), ("contradicts", p["contradicts"])):
             for e in items[: args.evidence]:
                 sign = "+" if label == "supports" else "-"
