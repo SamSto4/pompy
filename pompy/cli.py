@@ -452,6 +452,44 @@ def _cmd_patterns(args: argparse.Namespace) -> None:
         print()
 
 
+def _cmd_think(args: argparse.Namespace) -> None:
+    import contextlib
+    import io
+    import os
+
+    from pompy import excerpts, hybrid, think
+
+    conn = _open_store()
+    if not excerpts.count(conn):
+        conn.close()
+        raise SystemExit("No exchange excerpts yet. Run `pompy ingest` first.")
+    if args.dry_run:
+        print("── Instructions (cached) ──\n" + think.SYSTEM)
+        print("\n── Briefing ──\n" + think.briefing(conn))
+        print("\n── Tools ──\n" + ", ".join(t["name"] for t in think.TOOLS))
+        print(f"\nModel {args.model}, effort {args.effort}. Dry run: nothing was sent.")
+        conn.close()
+        return
+    think.load_env()
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        conn.close()
+        raise SystemExit(
+            "No ANTHROPIC_API_KEY. Put ANTHROPIC_API_KEY=... in the git-ignored .env file "
+            "in this folder, then run `pompy think` again."
+        )
+    try:
+        import anthropic
+    except ImportError:
+        conn.close()
+        raise SystemExit('pompy think needs the SDK: pip install -e ".[agent]"') from None
+    embedder = hybrid.default_embedder(conn)
+    print(f"Thinking with {args.model} (effort {args.effort}); excerpts go to the Claude API...")
+    with contextlib.redirect_stderr(io.StringIO()):  # the embedding model's progress bars
+        run = think.think(conn, anthropic.Anthropic(), embedder, args.model, args.effort)
+    conn.close()
+    print(think.render(run, args.model))
+
+
 def _cmd_check(args: argparse.Namespace) -> None:
     from pompy import score
 
@@ -607,6 +645,14 @@ def main() -> None:
     p_patterns.add_argument("--limit", type=int, default=10)
     p_patterns.add_argument("--evidence", type=int, default=2, help="excerpts to show per side")
     p_patterns.set_defaults(func=_cmd_patterns)
+
+    p_think = sub.add_parser(
+        "think", help="a Claude agent looks for patterns, with evidence on both sides (API key)"
+    )
+    p_think.add_argument("--dry-run", action="store_true", help="show what would be sent")
+    p_think.add_argument("--model", default="claude-opus-5-5")
+    p_think.add_argument("--effort", default="high", choices=("low", "medium", "high", "xhigh"))
+    p_think.set_defaults(func=_cmd_think)
 
     p_check = sub.add_parser("check", help="score a draft prompt before you send it")
     p_check.add_argument("text", nargs="+", help="the draft prompt (quote it)")

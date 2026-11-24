@@ -14,6 +14,8 @@ dependencies = []
 dev = ["pytest>=8", "ruff>=0.6"]
 # Phase 2: local embeddings (meaning search). Optional: without it Pompy runs keyword-only.
 memory = ["fastembed>=0.9", "numpy>=2"]
+# Phase 3: the hypothesis agent (`pompy think`). Needs ANTHROPIC_API_KEY in a git-ignored .env.
+agent = ["anthropic>=1"]
 
 [project.scripts]
 pompy = "pompy.cli:main"
