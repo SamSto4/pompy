@@ -169,6 +169,19 @@ table.cmp td.indent { padding-left: 22px; color: var(--muted); }
 .layer { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); background: var(--panel); display: flex; flex-direction: column; gap: 6px; }
 .layer .tag { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--purple); }
 .hidden { display: none !important; }
+.beliefs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.belief { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
+.belief .tag { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--purple); }
+.belief ul { margin: 0; padding-left: 18px; }
+.belief-s { font-weight: 500; }
+.belief-meter { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.belief-ev summary, details.testing summary { cursor: pointer; color: var(--muted); }
+details.testing summary { font-weight: 600; color: var(--ink); margin: 6px 0; }
+.belief-ev[open] { display: flex; flex-direction: column; gap: 8px; }
+.ev { display: flex; flex-direction: column; gap: 8px; }
+.ev-row { display: flex; flex-direction: column; gap: 2px; }
+.ev.for .quote { border-left-color: var(--good); }
+.ev.against .quote { border-left-color: var(--note); }
 .layer-fact { font-family: var(--font-display); font-size: 1.6rem; font-weight: 600; }
 .prow.static { cursor: default; }
 .controls.spread { justify-content: space-between; }
@@ -221,6 +234,7 @@ ol.parts li::marker { color: var(--purple); font-weight: 600; }
     <nav class="tabs" id="tabs" aria-label="Sections">
       <a href="#overview">Overview</a>
       <a href="#habits">Habits</a>
+      <a href="#learned">Learned</a>
       <a href="#prompts">Prompts</a>
       <a href="#ask">Ask Pompy</a>
       <a href="#memory">Memory Lab</a>
@@ -232,6 +246,7 @@ ol.parts li::marker { color: var(--purple); font-weight: 600; }
   <p id="load-error" class="note hidden"></p>
   <section class="view" id="view-overview"></section>
   <section class="view" id="view-habits"></section>
+  <section class="view" id="view-learned"></section>
   <section class="view" id="view-prompts"></section>
   <section class="view" id="view-ask"></section>
   <section class="view" id="view-memory"></section>
@@ -241,6 +256,7 @@ ol.parts li::marker { color: var(--purple); font-weight: 600; }
 <script src="app-core.js"></script>
 <script src="app-tabs.js"></script>
 <script src="app-lab.js"></script>
+<script src="app-learned.js"></script>
 <script>window.Pompy.start();</script>
 </body>
 </html>

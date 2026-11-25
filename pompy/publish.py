@@ -266,6 +266,68 @@ def _clarifying_questions(conn: sqlite3.Connection) -> dict[str, str]:
     return out
 
 
+EVIDENCE_SHOWN = 4  # excerpts per side of each learned pattern
+EVIDENCE_CHARS = 180
+
+
+def learned(conn: sqlite3.Connection, tz=None, now: datetime | None = None) -> dict:
+    """Long-term memory for the dashboard: each pattern, its confidence and evidence, its history.
+
+    Retired patterns are counted, not shown: they are what Pompy has let go of.
+    """
+    from pompy import patterns
+
+    try:
+        held = patterns.load(conn, now=now)
+    except sqlite3.Error:
+        return {"patterns": [], "retired": 0}
+
+    def ev(e: dict) -> dict:
+        return {
+            "t": _clip(redact(e["prompt"]), EVIDENCE_CHARS),
+            "o": _clip(redact(e["outcome"] or ""), 80),
+            "d": stats.parse_ts(e["ts"], tz).strftime("%Y-%m-%d"),
+        }
+
+    out = []
+    for p in held:
+        if p["status"] == "retired":
+            continue
+        st = p["stats"]
+        tested = p["key"].startswith(("lacks:", "late-night", "very-short", "follow-up"))
+        out.append(
+            {
+                "key": p["key"],
+                "s": redact(p["statement"]),
+                "scope": redact(p["scope"]),
+                "kind": p["kind"],
+                "source": "facts" if p["kind"] in ("goal", "preference") else p["source"],
+                "status": p["status"],
+                "c": round(p["confidence_now"], 3),
+                "tested": tested,
+                "rates": [round(st["rate_a"], 3), round(st["rate_b"], 3)] if tested else None,
+                "n": [st["n_a"], st["n_b"]] if tested else None,
+                "q": round(st["q"], 3) if tested else None,
+                "for": [ev(e) for e in p["supports"][:EVIDENCE_SHOWN]],
+                "against": [ev(e) for e in p["contradicts"][:EVIDENCE_SHOWN]],
+                "n_for": len(p["supports"]),
+                "n_against": len(p["contradicts"]),
+                "since": p["first_seen"][:10],
+                "last_confirmed": (p["last_confirmed"] or "")[:10] or None,
+                "history": [
+                    [x["at"][:10], round(x["confidence"], 3), x["status"]] for x in p["history"]
+                ],  # fmt: skip
+            }
+        )
+    retired = sum(1 for p in held if p["status"] == "retired")
+    return {
+        "patterns": out,
+        "retired": retired,
+        "half_life_days": patterns.HALF_LIFE_DAYS,
+        "retire_below": patterns.RETIRE_BELOW,
+    }
+
+
 def build_bundle(conn: sqlite3.Connection, tz=None, now: datetime | None = None) -> dict:
     ws = WorkingSet(tz=tz)
     st = stats.compute(conn, ws)
@@ -350,6 +412,7 @@ def build_bundle(conn: sqlite3.Connection, tz=None, now: datetime | None = None)
         "rules": export_rules(),
         "prompts": rows,
         "themes": themes,
+        "learned": learned(conn, tz, now),
     }
 
 

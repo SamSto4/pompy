@@ -52,9 +52,16 @@ The steps that need no API key come first. The Claude-powered agent (Step 18) wa
 - **First real pass:** 6 project goals for about $0.001 (Haiku, 4.3k tokens in). No recurring preferences yet. Fading already shows: projects last active in September sit near 0.20, against 0.48 for one active last week.
 - 🧠 *Learning:* forgetting is a feature. A memory that only grows keeps confident facts about projects you abandoned. Here every fact has to be re-earned by new episodes or let go.
 
-### Step 20: Showing what Pompy has learned
-- Dashboard: "What Pompy has learned": each pattern, its confidence, and the evidence on both sides. Memory Lab: watch a pattern's confidence over time.
+### Step 20: Showing what Pompy has learned ✅
+- Dashboard: a **Learned** tab: "What Pompy has learned": each pattern, its confidence, and the evidence on both sides. Memory Lab: watch a pattern's confidence over time.
 - The notch's after-send line uses a supported pattern when one applies to the prompt just sent.
+- **Memory concept:** making long-term memory inspectable. A memory you can't see can't be trusted or corrected, so every belief shows how sure Pompy is and the exchanges for and against it.
+- **What was built:**
+  - `publish.learned()` bundles each belief that is not retired: its statement, today's (faded) confidence, the numbers behind it when statistics tested it, up to 4 redacted excerpts on each side, and its history of checks. Retired beliefs are only counted.
+  - **Learned tab:** "Your projects" (one goal per project, with any preferences, and when you last worked on it), then "About your prompting": what holds up, what turned out false, and a folded "Still testing" list.
+  - **Memory Lab, "Watch a belief fade":** pick a belief and see its confidence at each check, how far it has faded since it was last confirmed, and a dashed line forward to the floor where Pompy lets it go ("lets it go in about N days").
+  - **`similar.applies()`:** the strongest *supported* habit or risk that applies to a prompt. A statistical rule applies when the prompt breaks it (lacks that rubric part, 6 words or fewer, sent before 5 am). An agent's pattern applies when one of the prompt's nearest past exchanges is part of its evidence. Hypotheses and project facts never reach the notch. `pompy similar` reports it as `pattern`, and the notch shows "Pompy has learned: …" in place of the generic lesson.
+- **Real result:** 6 project goals show, fading from 48% (worked on last week) to 19% (last touched in September). Nothing about prompting holds up yet, so the notch shows no learned line today; it will once a claim passes the statistics.
 
 ## Privacy
 Patterns and evidence live in `data/pompy.db` (git-ignored). The agent sends excerpts to the Claude API only when you run `pompy think`, and prints what it sent.

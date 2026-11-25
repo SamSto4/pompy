@@ -9,15 +9,30 @@
   // ── Memory Lab: what Pompy remembers, and one box to query it ───────────
   P.views.memory = function (root) {
     const D = P.D;
-    const habits = (D.habits || []).map((x) => x.label.toLowerCase());
+    const beliefs = ((D.learned || {}).patterns || []);
+    const held = beliefs.filter((p) => p.status === "supported");
     root.append(
       h("p", { class: "lede", text: "How Pompy remembers you, in three layers." }),
       h("div", { class: "layers" },
         layer("Short-term", "~600 tokens", "What it can hold for one question. Try it below."),
         layer("Episodic", `${D.meta.prompts} prompts`, "Everything you sent, and what happened after."),
-        layer("Long-term", `${habits.length} habits`, habits.length ? `Learned: you tend to skip ${habits.join(", ")}.` : "Nothing learned yet.")),
-      askMemory());
+        layer("Long-term", `${held.length} beliefs`, beliefs.length ? `Plus ${beliefs.length - held.length} ideas still being tested. See Learned.` : "Nothing learned yet.")),
+      askMemory(),
+      watchBelief(beliefs));
   };
+
+  // Long-term memory over time: pick a belief, watch it form and fade.
+  function watchBelief(beliefs) {
+    if (!beliefs.length || !P.beliefChart) return null;
+    const order = [...beliefs].sort((a, b) => b.c - a.c);
+    const sel = h("select", { class: "sel", "aria-label": "Belief" }, order.map((p, i) =>
+      h("option", { value: i, text: (p.kind === "goal" ? "Project: " : "") + (p.s.length > 90 ? p.s.slice(0, 89) + "…" : p.s) })));
+    const out = h("div", {});
+    const draw = () => { out.textContent = ""; out.append(P.beliefChart(order[+sel.value])); };
+    sel.addEventListener("change", draw);
+    draw();
+    return P.panel("Watch a belief fade", "forgetting, on a 90 day half life", h("div", { class: "controls" }, sel), out);
+  }
 
   function layer(name, fact, text) {
     return h("div", { class: "layer" }, h("span", { class: "tag", text: name }), h("div", { class: "layer-fact", text: fact }), h("p", { class: "small muted", text }));

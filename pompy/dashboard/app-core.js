@@ -163,7 +163,7 @@
 
   const built = {};
   function route() {
-    const names = ["overview", "habits", "prompts", "ask", "memory", "compare"];
+    const names = ["overview", "habits", "learned", "prompts", "ask", "memory", "compare"];
     const name = names.includes(location.hash.slice(1)) ? location.hash.slice(1) : "overview";
     for (const n of names) {
       document.getElementById("view-" + n).classList.toggle("on", n === name);

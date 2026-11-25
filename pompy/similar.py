@@ -7,14 +7,15 @@ never holds a prompt.
 
 Memory concept: retrieval from episodic memory to inform the present. The episodes are
 excerpts (Step 10), found by hybrid retrieval (Step 12); the lesson is a tiny, rule-based
-step toward long-term memory (Phase 3 will learn these from evidence instead).
+step toward long-term memory. When long-term memory holds a SUPPORTED pattern that applies to
+this prompt (Step 20), that pattern is reported too, ahead of the rule-based lesson.
 """
 
 from __future__ import annotations
 
 import sqlite3
 from collections import Counter
-from datetime import tzinfo
+from datetime import datetime, tzinfo
 
 LESSONS = {
     "clarify": "Claude often had to ask what you meant. Name the page, file or error up front.",
@@ -50,6 +51,7 @@ def similar(
         for h in hybrid.search(conn, text, embedder, limit=limit + 3, tz=tz)
         if " ".join(h["prompt"].split()) != text  # not the prompt itself, if already stored
     ][:limit]
+    pattern = applies(conn, text, {h["uuid"] for h in hits}, tz=tz)
     kinds = Counter(k for h in hits for k in h["friction"].split(",") if k)
     went_wrong = sum(1 for h in hits if h["friction"])
     top_kind = kinds.most_common(1)[0][0] if kinds else None
@@ -60,6 +62,7 @@ def similar(
         "went_wrong": went_wrong,
         "kinds": dict(kinds),
         "lesson": LESSONS[top_kind] if top_kind and went_wrong >= 2 else None,
+        "pattern": pattern,
         "hits": [
             {
                 "uuid": h["uuid"],
@@ -75,13 +78,61 @@ def similar(
     }
 
 
+def applies(
+    conn: sqlite3.Connection,
+    text: str,
+    neighbours: set[str],
+    tz: tzinfo | None = None,
+    now: datetime | None = None,
+) -> dict | None:
+    """The strongest supported habit or risk that applies to `text`, if any.
+
+    A statistical pattern applies when its condition is true of this prompt (it lacks that
+    rubric part, it is very short, it is late at night). An agent's pattern applies when one of
+    this prompt's nearest past exchanges is part of its supporting evidence. Patterns scoped to
+    one theme are skipped: placing a new prompt in a theme needs the theme model.
+    """
+    from pompy import patterns, score
+
+    try:
+        held = patterns.load(conn, status="supported", now=now)
+    except sqlite3.Error:
+        return None
+    missing = set(score.score_text(text)["missing"])
+    hour = (now or datetime.now()).astimezone(tz).hour
+    for p in held:  # strongest first
+        if p["kind"] not in ("risk", "habit"):
+            continue
+        key = p["key"]
+        if key.startswith("agent:"):
+            hit = bool(neighbours & {e["prompt_uuid"] for e in p["supports"]})
+        elif not key.endswith("@all"):
+            continue
+        elif key.startswith("lacks:"):
+            hit = key[len("lacks:") : -len("@all")] in missing
+        elif key == "very-short@all":
+            hit = len(text.split()) <= 6
+        elif key == "late-night@all":
+            hit = hour < 5
+        else:
+            continue
+        if hit:
+            return {"key": key, "statement": p["statement"],
+                    "confidence": round(p["confidence_now"], 2)}  # fmt: skip
+    return None
+
+
 def render(result: dict) -> str:
+    learned = result.get("pattern")
     if not result["count"]:
-        return "Nothing like this in your history yet."
+        none = "Nothing like this in your history yet."
+        return f"{none}\nPompy has learned: {learned['statement']}" if learned else none
     out = [
         f"{result['count']} past exchanges like this ({result['mode']} search); "
         f"{result['went_wrong']} went wrong."
     ]
+    if learned:
+        out.append(f"Pompy has learned: {learned['statement']}")
     if result["lesson"]:
         out.append(f"Lesson: {result['lesson']}")
     out.append("")
