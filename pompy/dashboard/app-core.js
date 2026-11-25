@@ -218,7 +218,6 @@
         tile("Peak time", `${st.time.peak_weekday} ${String(st.time.peak_hour).padStart(2, "0")}:00`, `${st.time.active_days} active days`)),
       dayTimeline(),
       monthly(),
-      themesPanel(),
       h("div", { class: "grid2" },
         P.panel("Specificity of your task prompts", "how many of the 7 rubric parts each prompt had",
           P.bars(sc.score.distribution.map((n, i) => ({ name: `${i} of 7 parts`, value: n }))),
