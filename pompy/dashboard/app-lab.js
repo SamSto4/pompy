@@ -12,7 +12,8 @@
     const beliefs = ((D.learned || {}).patterns || []);
     const held = beliefs.filter((p) => p.status === "supported");
     root.append(
-      h("p", { class: "lede", text: "How Pompy remembers you, in three layers." }),
+      h("div", { class: "page-head" }, h("span", { class: "eyebrow", text: "Memory lab" }), h("h1", { text: "How Pompy remembers you" }),
+        h("p", { class: "lede", text: "Three layers of agent memory, built from your own chats. Query the short-term layer below and watch a long-term belief fade." })),
       h("div", { class: "layers" },
         layer("Short-term", "~600 tokens", "What it can hold for one question. Try it below."),
         layer("Episodic", `${D.meta.prompts} prompts`, "Everything you sent, and what happened after."),
@@ -92,7 +93,7 @@
   const ROWS = () => [
     ["typed", "Typed prompts", null, false],
     ["median_words", "Median words you wrote", null, false],
-    ["score_mean", "Specificity, mean (0 to 7)", true, false],
+    ["score_mean", "Prompt Score, mean (0 to 7 checks)", true, false],
     ["openers_mean", "session openers", true, true],
     ["follow_ups_mean", "follow-ups", true, true],
     ...P.D.rules.features.map((f) => ["has_" + f.name, `with ${f.label.toLowerCase()} (%)`, true, true]),

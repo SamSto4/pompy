@@ -15,7 +15,7 @@
     "no reaction": { label: "No reaction", cls: "", tip: "The chat ended there, so there is nothing to judge." },
   };
   const ORDER = ["useful", "moved on", "unclear", "missed", "no reaction"];
-  const COLOR = { useful: "var(--good)", "moved on": "var(--accent)", unclear: "var(--purple)", missed: "var(--note)", "no reaction": "var(--line)" };
+  const COLOR = { useful: "var(--success)", "moved on": "color-mix(in srgb, var(--primary) 40%, var(--surface-raised))", unclear: "var(--primary)", missed: "var(--danger)", "no reaction": "var(--line)" };
   const bad = (r) => r.v === "unclear" || r.v === "missed";
   const judged = (rows) => rows.filter((r) => r.v && r.v !== "no reaction");
   const pctBad = (rows) => { const j = judged(rows); return j.length ? Math.round((100 * j.filter(bad).length) / j.length) : null; };
@@ -26,14 +26,12 @@
   P.views.overview = function (root) {
     const tasks = P.D.prompts.filter((r) => r.v);
     // One answer first, then the evidence; everything else waits behind a click.
-    root.append(
-      outcomesPanel(tasks),
-      recentPanel(tasks),
-      h("p", { class: "fold-label", text: "More detail" }),
-      P.fold(projectsPanel(tasks)),
-      P.fold(setupPanel(tasks)),
-      P.fold(P.dayTimeline()));
+    // Home keeps the answer and your latest prompts; projects, setup and your days moved to
+    // the Projects and Analytics pages.
+    root.append(outcomesPanel(tasks), recentPanel(tasks));
   };
+  P.projectsPanel = () => projectsPanel(P.D.prompts.filter((r) => r.v));
+  P.setupPanel = () => setupPanel(P.D.prompts.filter((r) => r.v));
 
   // ── How replies went ──────────────────────────────────────────────────────
   function outcomesPanel(all) {
@@ -56,7 +54,7 @@
         why ? h("p", { class: "note", text: `Most common reason: the prompt never said ${why[0]} (${why[1]} times).` }) : null);
     }
     draw();
-    const go = h("a", { class: "btn primary", href: "#ask", text: "Write a better prompt" });
+    const go = h("a", { class: "btn", href: "#write", text: "Plan your next prompt" });
     return h("div", { class: "panel hero" },
       h("div", { class: "panel-head" }, h("h2", { text: "How Claude's replies went" }), sel),
       box,
@@ -90,7 +88,7 @@
     const v = V[r.v];
     const row = h("div", { class: "prow", tabindex: 0, role: "button", "aria-expanded": "false" },
       h("div", {}, h("div", { class: "txt", text: r.t }), h("div", { class: "meta", text: `${P.when(r)} · ${r.p}` })),
-      h("div", { class: "right" }, h("span", { class: "chip " + v.cls, title: v.tip, text: v.label })));
+      h("div", { class: "right" }, P.scorePill(r), h("span", { class: "chip " + v.cls, title: v.tip, text: v.label })));
     let open = null;
     const toggle = (ev) => {
       if (ev.target.closest(".detail")) return;
@@ -109,7 +107,7 @@
   function detail(r) {
     const has = new Set(r.f);
     const parts = h("div", { class: "checks" }, P.D.rules.features.map((f) => h("span", { class: has.has(f.name) ? "yes" : "no", text: f.label })));
-    const out = [h("div", { class: "full", text: r.t }), h("div", { class: "small muted", text: `Has ${r.f.length} of the 7 parts` }), parts];
+    const out = [h("div", { class: "full", text: r.t }), h("div", { class: "small muted", text: `Prompt Score ${P.tenText(r.f.length)}/10: has ${r.f.length} of the 7 checks` }), parts];
     if (r.c) {
       out.push(h("h3", { text: "Why it went wrong" }), h("ol", { class: "steps" }, r.c.map((x) => h("li", { text: x }))));
       if (r.rp) out.push(h("div", { class: "small muted", text: "Claude replied" }), h("div", { class: "quote", text: r.rp }));
@@ -117,7 +115,7 @@
       out.push(explainBlock(r));
     }
     out.push(h("div", { class: "controls" }, h("button", { class: "btn", text: "Write a better version",
-      onclick: () => { P.prefill = r.t; location.hash = "ask"; } })));
+      onclick: () => { P.prefill = r.t; location.hash = "write"; } })));
     return h("div", { class: "detail" }, out);
   }
 

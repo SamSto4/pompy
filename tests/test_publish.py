@@ -37,6 +37,7 @@ def test_build_writes_the_page_and_its_data(built):
         "app-core.js",
         "app-tabs.js",
         "app-lab.js",
+        "app-profile.js",
         "data.json",
     } <= names
     assert data["meta"]["prompts"] == 10 and data["meta"]["rubric_version"] == 1

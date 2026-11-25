@@ -50,25 +50,13 @@
       open);
   }
 
-  P.views.learned = function (root) {
+  // Your projects: one goal each, with any preferences you showed there. Shown on the Projects page.
+  P.goalsPanel = function () {
     const all = L().patterns;
     const goals = all.filter((p) => p.kind === "goal");
     const prefs = all.filter((p) => p.kind === "preference");
-    const habits = all.filter((p) => p.kind !== "goal" && p.kind !== "preference");
-    const holds = habits.filter((p) => p.status === "supported");
-    const testing = habits.filter((p) => p.status === "hypothesis");
-    const wrong = habits.filter((p) => p.status === "contradicted");
-
-    root.append(h("p", { class: "lede", text: `What Pompy believes about how you work, how sure it is, and the evidence on both sides. A belief fades by half every ${L().half_life_days} days unless new chats back it up.` }));
-
-    if (!all.length) {
-      root.append(h("div", { class: "panel" }, h("p", { class: "muted", text: "Nothing learned yet. Run pompy consolidate with facts, then publish again." })));
-      return;
-    }
-
-    // Your projects: one goal each, with any preferences you showed there.
-    if (goals.length) {
-      root.append(P.panel("Your projects", `${goals.length} goals`,
+    if (!goals.length) return null;
+    return (P.panel("Your projects", `${goals.length} goals`,
         h("div", { class: "beliefs" }, goals.map((g) => {
           const mine = prefs.filter((x) => x.scope === g.scope);
           return h("div", { class: "belief" },
@@ -79,6 +67,20 @@
             h("p", { class: "small muted", text: g.last_confirmed ? `Last worked on ${P.niceDate(g.last_confirmed, true)}.` : "" }),
             h("details", { class: "belief-ev" }, h("summary", { class: "small", text: "See the chats" }), evidenceList(g.for, g.n_for - g.for.length, "From", "for")));
         }))));
+  };
+
+  P.views.learned = function (root) {
+    const all = L().patterns;
+    const habits = all.filter((p) => p.kind !== "goal" && p.kind !== "preference");
+    const holds = habits.filter((p) => p.status === "supported");
+    const testing = habits.filter((p) => p.status === "hypothesis");
+    const wrong = habits.filter((p) => p.status === "contradicted");
+
+    root.append(h("p", { class: "lede", text: `How sure Pompy is about each belief, with the evidence on both sides. A belief fades by half every ${L().half_life_days} days unless new chats back it up.` }));
+
+    if (!all.length) {
+      root.append(h("div", { class: "panel" }, h("p", { class: "muted", text: "Nothing learned yet. Run pompy consolidate with facts, then publish again." })));
+      return;
     }
 
     // About your prompting: what holds, what turned out false, what is still being tested.
@@ -135,13 +137,13 @@
       s("line", { x1: x(today), x2: x(today), y1: T0, y2: H - B0, stroke: "var(--line)" }),
       s("text", { x: x(today), y: H - 8, "text-anchor": "middle", class: "strong" }, "today"),
       x(today) - L0 > 60 ? s("text", { x: L0, y: H - 8 }, label(x0)) : null,
-      past.length ? s("path", { d: path(past), fill: "none", stroke: "var(--accent)", "stroke-width": 2.5 }) : null,
+      past.length ? s("path", { d: path(past), fill: "none", stroke: "var(--primary)", "stroke-width": 2.5 }) : null,
       past.length ? s("circle", { cx: x(past[0][0]), cy: y(past[0][1]), r: 4, fill: "var(--good)" },
         s("title", {}, `Last confirmed ${p.last_confirmed}: ${Math.round(100 * past[0][1])}%`)) : null,
       s("text", { x: W - R0, y: H - 8, "text-anchor": "end" }, label(x1)),
       s("path", { d: path(future), fill: "none", stroke: "var(--purple)", "stroke-width": 2, "stroke-dasharray": "5 5" }),
-      s("path", { d: path(pts), fill: "none", stroke: "var(--accent)", "stroke-width": 2.5 }),
-      pts.map(([t, c]) => s("circle", { cx: x(t), cy: y(c), r: 4, fill: "var(--accent)", tabindex: 0 },
+      s("path", { d: path(pts), fill: "none", stroke: "var(--primary)", "stroke-width": 2.5 }),
+      pts.map(([t, c]) => s("circle", { cx: x(t), cy: y(c), r: 4, fill: "var(--primary)", tabindex: 0 },
         s("title", {}, `${new Date(t).toISOString().slice(0, 10)}: ${Math.round(100 * c)}%`))));
 
     const say = p.status === "retired" ? "Pompy has let this go."
@@ -150,7 +152,7 @@
     return h("div", {}, svg,
       h("div", { class: "controls small" },
         past.length ? h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--good)" }), `last confirmed, ${P.niceDate(p.last_confirmed, true)}`) : null,
-        h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--accent)" }), "checked"),
+        h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--primary)" }), "checked"),
         h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--purple)" }), "fading, if not confirmed")),
       h("p", { class: "small", text: say }));
   };
