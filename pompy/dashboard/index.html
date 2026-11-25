@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07080c">
 <title>Pompy Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -68,11 +69,10 @@ header.top { background: color-mix(in srgb, var(--surface) 88%, transparent); ba
 nav.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 nav.tabs a { padding: 10px 14px; border-bottom: 2px solid transparent; color: var(--muted);
   text-decoration: none; white-space: nowrap; font-weight: 500; }
-nav.tabs a[aria-current="page"] { color: var(--ink); border-image: var(--brand-gradient) 1; }
-nav.tabs a:hover { color: var(--ink); }
+nav.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--primary); }
 
-main { padding: var(--space-10) 0 60px; }
-section.view { display: none; flex-direction: column; gap: var(--space-10); }
+main.wrap { padding-top: var(--space-10); padding-bottom: 80px; }
+section.view { display: none; flex-direction: column; gap: var(--space-6); }
 section.view.on { display: flex; }
 .lede { max-width: 68ch; color: var(--muted); }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: var(--space-6); }
@@ -89,7 +89,7 @@ section.view.on { display: flex; }
 .bar-row { display: grid; grid-template-columns: minmax(90px, 34%) 1fr 56px; gap: 10px; align-items: center; font-size: 0.86rem; }
 .bar-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar-track { height: 10px; background: var(--accent-soft); border-radius: var(--radius-full); overflow: hidden; }
-.bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--purple)); border-radius: var(--radius-full); }
+.bar-fill { height: 100%; background: var(--primary); border-radius: var(--radius-full); }
 .bar-row .num { text-align: right; font-size: 0.8rem; color: var(--muted); }
 
 .heat { display: grid; grid-template-columns: 34px repeat(24, minmax(8px, 1fr)); gap: 2px; font-size: 0.7rem; }
@@ -122,11 +122,12 @@ section.view.on { display: flex; }
 
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 8px 18px; border-radius: var(--radius-full); cursor: pointer; font-weight: 500;
   transition: border-color 0.15s ease-out, box-shadow 0.2s ease-out, transform 0.15s ease-out; }
-.btn:hover { border-color: var(--primary); }
+
 .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
-.btn.primary:hover { box-shadow: var(--shadow-glow); }
+
 .btn.primary:active { box-shadow: none; transform: translateY(1px); }
 .btn:disabled { opacity: 0.5; cursor: default; }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .controls select, .controls input, input.text, textarea, select.sel {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 12px; min-width: 0; }
@@ -135,7 +136,7 @@ textarea { width: 100%; resize: vertical; min-height: 110px; line-height: 1.5; }
 
 .plist { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .prow { display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; padding: 11px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
-.prow:hover { background: var(--accent-soft); }
+.prow:active { background: var(--accent-soft); }
 .prow .meta { font-size: 0.76rem; color: var(--muted); font-family: var(--font-mono); }
 .prow .txt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .prow .right { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; align-content: start; max-width: 240px; }
@@ -219,8 +220,47 @@ ul.analysis li.focus { background: color-mix(in srgb, var(--purple) 14%, transpa
 ul.analysis li.focus::before { left: 8px; top: 4px; color: var(--purple); }
 ol.parts { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; }
 ol.parts li::marker { color: var(--purple); font-weight: 600; }
+/* Calm layout: one answer up top, details folded away until asked for. */
+.lede { font-size: 1.05rem; }
+.panel.hero { gap: var(--space-4); padding: var(--space-6) var(--space-6) var(--space-6); }
+.panel.hero .big-line b { font-size: 3rem; line-height: 1; letter-spacing: -0.02em; margin-right: 6px; }
+.hero-foot { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+details.fold { gap: 0; padding: 0; }
+details.fold > summary { list-style: none; cursor: pointer; padding: var(--space-4) var(--space-6); border-radius: var(--radius); align-items: center; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary h2 { font-size: 1.1rem; line-height: 24px; }
+details.fold > summary { flex-wrap: nowrap; }
+details.fold > summary > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+details.fold > summary::after { content: "+"; margin-left: auto; color: var(--muted); font: 500 1.3rem/1 var(--font-body); transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1); }
+details.fold[open] > summary::after { transform: rotate(45deg); }
+details.fold[open] > summary { border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; }
+details.fold > :not(summary) { margin: var(--space-4) var(--space-6); }
+details.fold > :not(summary):last-child { margin-bottom: var(--space-6); }
+.subview { display: flex; flex-direction: column; gap: var(--space-6); }
+h2.section-title { margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--line); }
+.fold-label { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: var(--space-4); }
+.chart-scroll { overflow-x: auto; }
+.prow:focus-visible { outline-offset: -2px; }
+html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+button, a, summary, [role="button"] { touch-action: manipulation; }
+@media (hover: hover) and (pointer: fine) {
+  nav.tabs a:hover { color: var(--ink); }
+  .prow:hover { background: var(--accent-soft); }
+  .btn:hover { border-color: var(--primary); }
+  .btn.primary:hover { box-shadow: var(--shadow-glow); }
+  details.fold > summary:hover::after { color: var(--ink); }
+}
 @media (max-width: 560px) {
   .wrap { padding: 0 16px; }
+  main.wrap { padding-top: var(--space-6); }
+  input, textarea, select { font-size: 16px; }
+  nav.tabs { mask-image: linear-gradient(90deg, #000 85%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); }
+  nav.tabs a { padding: 10px 10px; }
+  .chart-scroll .chart { min-width: 620px; }
+  details.fold > summary { padding: var(--space-4); }
+  details.fold > summary > span { display: none; }
+  details.fold > :not(summary) { margin: var(--space-4); }
+  .panel.hero { padding: var(--space-4); }
   .panel { padding: var(--space-4); }
   .prow { grid-template-columns: 1fr; }
   .prow .right { justify-content: flex-start; max-width: none; }
@@ -237,24 +277,20 @@ ol.parts li::marker { color: var(--purple); font-weight: 600; }
     </div>
     <nav class="tabs" id="tabs" aria-label="Sections">
       <a href="#overview">Overview</a>
-      <a href="#habits">Habits</a>
-      <a href="#learned">Learned</a>
-      <a href="#prompts">Prompts</a>
       <a href="#ask">Better prompt</a>
-      <a href="#memory">Memory Lab</a>
-      <a href="#compare">Compare</a>
+      <a href="#prompts">Prompts</a>
+      <a href="#habits">Habits</a>
+      <a href="#memory">Memory</a>
     </nav>
   </div>
 </header>
 <main class="wrap">
   <p id="load-error" class="note hidden"></p>
   <section class="view" id="view-overview"></section>
-  <section class="view" id="view-habits"></section>
-  <section class="view" id="view-learned"></section>
-  <section class="view" id="view-prompts"></section>
   <section class="view" id="view-ask"></section>
+  <section class="view" id="view-prompts"></section>
+  <section class="view" id="view-habits"></section>
   <section class="view" id="view-memory"></section>
-  <section class="view" id="view-compare"></section>
 </main>
 <script src="scorer.js"></script>
 <script src="app-core.js"></script>

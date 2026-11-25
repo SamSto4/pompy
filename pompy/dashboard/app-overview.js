@@ -5,7 +5,7 @@
   "use strict";
   const P = window.Pompy;
   const { h } = P;
-  const RECENT = 20;
+  const RECENT = 8; // rows shown at first; "Show more" adds this many again
   const MIN_PROJECT = 5; // task prompts a project needs before its rates are shown
   const V = {
     useful: { label: "Useful", cls: "ok", tip: "You said it worked, thanked Claude, or asked to commit or ship it." },
@@ -25,13 +25,14 @@
 
   P.views.overview = function (root) {
     const tasks = P.D.prompts.filter((r) => r.v);
+    // One answer first, then the evidence; everything else waits behind a click.
     root.append(
-      h("p", { class: "lede", text: "Did Claude give you what you wanted? Pompy reads how you reacted to each reply, and when a reply missed, works out what the prompt was missing." }),
       outcomesPanel(tasks),
       recentPanel(tasks),
-      projectsPanel(tasks),
-      setupPanel(tasks),
-      P.dayTimeline());
+      h("p", { class: "fold-label", text: "More detail" }),
+      P.fold(projectsPanel(tasks)),
+      P.fold(setupPanel(tasks)),
+      P.fold(P.dayTimeline()));
   };
 
   // ── How replies went ──────────────────────────────────────────────────────
@@ -50,52 +51,65 @@
         h("span", { class: "legend", title: V[v].tip }, h("i", { class: "dot sq", style: `background:${COLOR[v]}` }), `${V[v].label} ${n[v]}`)));
       const why = top(rows.filter(bad).map(lacked));
       box.append(
-        h("p", { class: "big-line" }, h("b", { text: `${pctBad(rows) ?? 0}%` }), " of the replies you reacted to missed or needed a question."),
+        h("p", { class: "big-line" }, h("b", { text: `${pctBad(rows) ?? 0}%` }), " of Claude's replies missed or had to ask what you meant."),
         bar, legend,
-        why ? h("p", { class: "note", text: `Most common reason: the prompt never said ${why[0]} (${why[1]} times).` }) : null,
-        h("p", { class: "small muted", text: "Moved on means you carried on without pushing back. Pompy counts it as fine but can't be sure it was what you wanted." }));
+        why ? h("p", { class: "note", text: `Most common reason: the prompt never said ${why[0]} (${why[1]} times).` }) : null);
     }
     draw();
-    return P.panel("How Claude's replies went", "task prompts only", h("div", { class: "controls" }, sel), box);
+    const go = h("a", { class: "btn primary", href: "#ask", text: "Write a better prompt" });
+    return h("div", { class: "panel hero" },
+      h("div", { class: "panel-head" }, h("h2", { text: "How Claude's replies went" }), sel),
+      box,
+      h("div", { class: "hero-foot" },
+        h("p", { class: "small muted", text: "Task prompts only. \"Moved on\" means you carried on without pushing back: probably fine." }),
+        go));
   }
 
   // ── Your last prompts ─────────────────────────────────────────────────────
   function recentPanel(all) {
-    let onlyBad = false;
+    let onlyBad = false, limit = RECENT;
     const list = h("div", { class: "plist" });
+    const more = h("button", { class: "btn hidden", text: "Show more", onclick: () => { limit += RECENT; draw(); } });
     const tabs = h("div", { class: "seg-tabs", role: "tablist" });
     const tab = (label, val) => h("button", { class: "seg-tab", role: "tab", "aria-selected": String(onlyBad === val), text: label,
-      onclick: () => { onlyBad = val; [...tabs.children].forEach((b, i) => b.setAttribute("aria-selected", String(i === (val ? 1 : 0)))); draw(); } });
+      onclick: () => { onlyBad = val; limit = RECENT; [...tabs.children].forEach((b, i) => b.setAttribute("aria-selected", String(i === (val ? 1 : 0)))); draw(); } });
     tabs.append(tab("All", false), tab("Missed or unclear", true));
     function draw() {
       list.textContent = "";
-      const rows = all.filter((r) => !onlyBad || bad(r)).slice(-RECENT).reverse();
-      if (!rows.length) list.append(h("p", { class: "muted", text: "Nothing here." }));
+      const pool = all.filter((r) => !onlyBad || bad(r));
+      const rows = pool.slice(-limit).reverse();
+      more.classList.toggle("hidden", pool.length <= limit);
+      if (!rows.length) list.append(h("p", { class: "muted", text: onlyBad ? "No missed or unclear replies. Nice." : "No task prompts yet." }));
       rows.forEach((r) => list.append(promptRow(r)));
     }
     draw();
-    return P.panel(`Your last ${RECENT} prompts`, "click one to see what it was missing", h("div", { class: "controls" }, tabs), list);
+    return P.panel("Your latest prompts", "open one to see what it was missing", h("div", { class: "controls" }, tabs), list, h("div", {}, more));
   }
 
   function promptRow(r) {
     const v = V[r.v];
-    const row = h("div", { class: "prow" },
+    const row = h("div", { class: "prow", tabindex: 0, role: "button", "aria-expanded": "false" },
       h("div", {}, h("div", { class: "txt", text: r.t }), h("div", { class: "meta", text: `${P.when(r)} · ${r.p}` })),
-      h("div", { class: "right" }, h("span", { class: "chip " + v.cls, title: v.tip, text: v.label }), P.scorePill(r)));
+      h("div", { class: "right" }, h("span", { class: "chip " + v.cls, title: v.tip, text: v.label })));
     let open = null;
-    row.addEventListener("click", (ev) => {
+    const toggle = (ev) => {
       if (ev.target.closest(".detail")) return;
-      if (open) { open.remove(); open = null; return; }
+      const clamp = row.querySelector(".txt");
+      if (open) { open.remove(); open = null; clamp.classList.remove("hidden"); row.setAttribute("aria-expanded", "false"); return; }
       open = detail(r);
       row.append(open);
-    });
+      clamp.classList.add("hidden"); // the full text shows inside the detail
+      row.setAttribute("aria-expanded", "true");
+    };
+    row.addEventListener("click", toggle);
+    row.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === row) { e.preventDefault(); toggle(e); } });
     return row;
   }
 
   function detail(r) {
     const has = new Set(r.f);
     const parts = h("div", { class: "checks" }, P.D.rules.features.map((f) => h("span", { class: has.has(f.name) ? "yes" : "no", text: f.label })));
-    const out = [h("div", { class: "full", text: r.t }), parts];
+    const out = [h("div", { class: "full", text: r.t }), h("div", { class: "small muted", text: `Has ${r.f.length} of the 7 parts` }), parts];
     if (r.c) {
       out.push(h("h3", { text: "Why it went wrong" }), h("ol", { class: "steps" }, r.c.map((x) => h("li", { text: x }))));
       if (r.rp) out.push(h("div", { class: "small muted", text: "Claude replied" }), h("div", { class: "quote", text: r.rp }));

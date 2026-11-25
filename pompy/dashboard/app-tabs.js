@@ -84,7 +84,8 @@
     const thin = (x) => (x.low_n ? h("span", { class: "thin", text: ` (only ${x.n} prompts, thin evidence)` }) : null);
     const trend = hb.this_month != null && hb.before != null
       ? h("p", { class: "small" }, "This month ", h("b", { class: "mono", text: `${hb.this_month}%` }), " vs before ", h("b", { class: "mono", text: `${hb.before}%` }),
-        h("span", { class: hb.this_month >= hb.before ? "better" : "worse", text: hb.this_month >= hb.before ? "  ▲ improving" : "  ▼ slipping" }))
+        hb.this_month === hb.before ? h("span", { class: "muted", text: "  no change" })
+          : h("span", { class: hb.this_month > hb.before ? "better" : "worse", text: hb.this_month > hb.before ? "  ▲ improving" : "  ▼ slipping" }))
       : null;
     let idx = 0;
     const exBox = h("div", { class: "habit-body" });
@@ -93,7 +94,9 @@
       h("h2", {}, h("span", { class: "muted", text: "What to work on: " }), hb.label),
       h("p", { class: "note", text: hb.tip }),
       trend,
-      h("p", { class: "small muted" }, `Something went wrong after ${hb.with.rate ?? "n/a"}% of prompts with it`, thin(hb.with), `, and ${hb.without.rate ?? "n/a"}% without it`, thin(hb.without), "."),
+      hb.with.rate != null && hb.without.rate != null
+        ? h("p", { class: "small muted" }, `Something went wrong after ${hb.with.rate}% of prompts with it`, thin(hb.with), `, and ${hb.without.rate}% without it`, thin(hb.without), ".")
+        : h("p", { class: "small muted", text: "Not enough prompts yet to say whether it changes how replies go." }),
       exBox);
     const show = () => {
       exBox.textContent = "";
@@ -103,12 +106,14 @@
         exBox.append(h("p", { class: "muted", text: "No example prompt found." }));
         return;
       }
-      const after = h("div", { class: "quote after" });
-      const afterHead = h("div", { class: "controls" }, h("h3", { text: "A better version" }));
+      const after = h("div", { class: "quote after hidden" });
+      const afterHead = h("div", { class: "controls hidden" }, h("h3", { text: "A better version" }));
       const status = h("span", { class: "muted small" });
       const btn = h("button", { class: "btn", text: "Write it again" });
       const missing = row.f.length ? P.D.rules.features.map((f) => f.name).filter((n) => !row.f.includes(n)) : [hb.feature];
       const showAfter = (text) => {
+        after.classList.remove("hidden");
+        afterHead.classList.remove("hidden");
         after.textContent = text;
         afterHead.textContent = "";
         const copy = h("button", { class: "btn", text: "Copy" });
@@ -117,8 +122,11 @@
       };
       const rewrite = async () => {
         btn.disabled = true;
+        after.classList.remove("hidden");
+        afterHead.classList.remove("hidden");
         const text = await streamRewrite(row.t, missing, after, status);
         btn.disabled = false;
+        if (!text && !after.textContent) { after.classList.add("hidden"); afterHead.classList.add("hidden"); }
         if (text) {
           showAfter(text);
           const ref = await P.userDoc("rw~" + row.u).catch(() => null);

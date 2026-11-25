@@ -161,21 +161,46 @@
     route();
   };
 
+  // Five places, each with one job. Older links (#learned, #compare) still land somewhere sensible.
+  // A tab can hold more than one part; later parts sit under their own heading, or folded away.
+  const TABS = {
+    overview: [["overview"]],
+    ask: [["ask"]],
+    prompts: [["prompts"]],
+    habits: [["habits"], ["compare", "Are you improving?", "fold"]],
+    memory: [["memory"], ["learned", "Long-term memory: what Pompy believes"]],
+  };
+  const ALIAS = { learned: "memory", compare: "habits" };
   const built = {};
   function route() {
-    const names = ["overview", "habits", "learned", "prompts", "ask", "memory", "compare"];
-    const name = names.includes(location.hash.slice(1)) ? location.hash.slice(1) : "overview";
-    for (const n of names) {
+    const want = location.hash.slice(1);
+    const name = TABS[want] ? want : ALIAS[want] || "overview";
+    for (const n of Object.keys(TABS)) {
       document.getElementById("view-" + n).classList.toggle("on", n === name);
       const a = document.querySelector(`#tabs a[href="#${n}"]`);
       if (n === name) a.setAttribute("aria-current", "page");
       else a.removeAttribute("aria-current");
     }
-    if (!built[name] && P.views[name]) {
-      built[name] = true;
-      P.views[name](document.getElementById("view-" + name));
+    if (built[name]) return;
+    built[name] = true;
+    const root = document.getElementById("view-" + name);
+    for (const [part, title, mode] of TABS[name]) {
+      if (!P.views[part]) continue;
+      if (!title) { P.views[part](root); continue; }
+      const box = h("div", { class: "subview" });
+      P.views[part](box);
+      if (mode === "fold") root.append(h("details", { class: "panel fold" }, h("summary", { class: "panel-head" }, h("h2", { text: title })), box));
+      else root.append(h("h2", { class: "section-title", text: title }), box);
     }
   }
+
+  // Turn a panel into one that opens on click: for detail most visits don't need.
+  P.fold = (panel, open) => {
+    if (!panel) return null;
+    const head = panel.querySelector(".panel-head");
+    const rest = [...panel.childNodes].filter((n) => n !== head);
+    return h("details", { class: "panel fold", open }, h("summary", { class: "panel-head" }, [...head.childNodes]), rest);
+  };
 
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const dayParts = (iso) => iso.split("-").map(Number);
@@ -210,7 +235,7 @@
   // One row per day, one dot per prompt at the time you sent it.
   P.dayTimeline = function () {
     const readout = h("div", { class: "readout", text: "Point at a dot to see the prompt." });
-    const chartBox = h("div", {});
+    const chartBox = h("div", { class: "chart-scroll" });
     const note = h("p", { class: "muted small" });
     let period = "30d";
     const sel = P.periodSelect("tl-period", period, (v) => { period = v; draw(); });

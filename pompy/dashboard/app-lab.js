@@ -16,7 +16,7 @@
       h("div", { class: "layers" },
         layer("Short-term", "~600 tokens", "What it can hold for one question. Try it below."),
         layer("Episodic", `${D.meta.prompts} prompts`, "Everything you sent, and what happened after."),
-        layer("Long-term", `${held.length} beliefs`, beliefs.length ? `Plus ${beliefs.length - held.length} ideas still being tested. See Learned.` : "Nothing learned yet.")),
+        layer("Long-term", `${held.length} beliefs`, beliefs.length ? `Plus ${beliefs.length - held.length} ideas still being tested. See below.` : "Nothing learned yet.")),
       askMemory(),
       watchBelief(beliefs));
   };
