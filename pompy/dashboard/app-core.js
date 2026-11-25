@@ -209,10 +209,10 @@
     const topModel = Object.keys(share).sort((a, b) => share[b] - share[a])[0];
     const typedCount = st.totals.prompts_by_kind.typed || 0;
     root.append(
-      h("p", { class: "lede", text: "Everything Pompy remembers about how you prompt Claude, all-time. Specificity is scored 0 to 7 on task prompts only; friction means something went wrong right after a prompt." }),
+      h("p", { class: "lede", text: "Everything Pompy remembers about how you prompt Claude, all-time. Specificity counts how many of 7 parts a task prompt has (goal, context, limits, done definition, format, example, exact reference); friction means something went wrong right after a prompt." }),
       h("div", { class: "tiles", id: "tiles" },
         tile("Typed prompts", typedCount, `${st.totals.sessions} chats · ${st.totals.projects} projects`),
-        tile("Avg specificity", `${sc.score.mean}/7`, `median ${sc.score.median} · ${sc.scored_prompts} task prompts`),
+        specTile(sc),
         tile("Friction after tasks", `${sc.friction.overall.rate}%`, `${sc.friction.overall.friction} of ${sc.friction.overall.n}`),
         tile("Top model", topModel ? P.modelName(topModel) : "none", topModel ? `${share[topModel]}% of replies` : ""),
         tile("Peak time", `${st.time.peak_weekday} ${String(st.time.peak_hour).padStart(2, "0")}:00`, `${st.time.active_days} active days`)),
@@ -234,6 +234,19 @@
         P.panel("Projects", "prompts per project",
           P.bars(st.projects.slice(0, 10).map((p) => ({ name: p.name || p.key, value: p.prompts }))))));
   };
+
+  // Specificity: how many of the 7 prompt parts a task prompt has. Says which parts, and which
+  // two you leave out most, so the number means something.
+  function specTile(sc) {
+    const feats = P.D.rules.features;
+    const pctOf = (f) => (sc.features[f.name] || {}).present_pct ?? 0;
+    const rarest = [...feats].sort((a, b) => pctOf(a) - pctOf(b)).slice(0, 2);
+    const t = tile("Specificity", `${sc.score.mean} of 7`, `parts per task prompt, on average (${sc.scored_prompts} prompts)`);
+    t.title = "Seven parts: " + feats.map((f) => f.label.toLowerCase()).join(", ");
+    t.append(h("div", { class: "sub" }, "Most often missing: ",
+      ...rarest.flatMap((f, i) => [i ? " and " : "", h("a", { href: "#habits", text: `${f.label.toLowerCase()} (in ${Math.round(pctOf(f))}%)` })])));
+    return t;
+  }
 
   function tile(label, value, sub) {
     return h("div", { class: "tile" }, h("div", { class: "label", text: label }), h("div", { class: "value", text: value }), h("div", { class: "sub", text: sub }));
