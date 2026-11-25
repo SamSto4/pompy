@@ -93,7 +93,7 @@
   const ROWS = () => [
     ["typed", "Typed prompts", null, false],
     ["median_words", "Median words you wrote", null, false],
-    ["score_mean", "Prompt Score, mean (0 to 7 checks)", true, false],
+    ["score_mean", "Prompt Score, mean (out of 10)", true, false],
     ["openers_mean", "session openers", true, true],
     ["follow_ups_mean", "follow-ups", true, true],
     ...P.D.rules.features.map((f) => ["has_" + f.name, `with ${f.label.toLowerCase()} (%)`, true, true]),
@@ -118,6 +118,8 @@
       const pa = P.period(a), pb = P.period(b);
       const ma = P.metrics(P.D.prompts.filter(pa.test));
       const mb = P.metrics(P.D.prompts.filter(pb.test));
+      // Scores read out of 10, like everywhere else (the same 7 checks, scaled).
+      for (const m of [ma, mb]) for (const k of ["score_mean", "openers_mean", "follow_ups_mean"]) if (m[k] != null) m[k] = P.round((m[k] * 10) / 7, 1);
       const t = h("table", { class: "cmp" },
         h("thead", {}, h("tr", {}, h("th", { text: "" }), h("th", { text: pa.label }), h("th", { text: pb.label }), h("th", { text: "Change" }))));
       const body = h("tbody", {});

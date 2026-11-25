@@ -296,6 +296,8 @@ h2.section-title { margin-top: var(--space-4); padding-top: var(--space-6); bord
 .ring .track { stroke: var(--soft); }
 .ring .val { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset 1100ms var(--ease-out); }
 .ring.good .val { stroke: var(--accent); }
+:root:not([data-theme="dark"]) .ring.good .val { stroke: color-mix(in srgb, var(--accent) 62%, var(--ink)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ring.good .val { stroke: var(--accent); } }
 .ring .in { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
 .ring .n { font: 700 calc(var(--ring, 148px) * 0.3)/1 var(--font-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .ring .of { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
@@ -316,7 +318,7 @@ h2.section-title { margin-top: var(--space-4); padding-top: var(--space-6); bord
 .tone { display: flex; height: 14px; border-radius: var(--radius-full); overflow: hidden; gap: 2px; }
 .recent-scores { display: flex; gap: 6px; align-items: flex-end; height: 104px; }
 .recent-scores i { flex: 1 1 0; max-width: 22px; border-radius: 4px 4px 2px 2px; background: var(--primary); transform-origin: bottom; }
-.recent-scores i.good { background: var(--accent); }
+.recent-scores i.good { background: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--on-accent) 30%, transparent); }
 .recent-scores i.low { background: color-mix(in srgb, var(--danger) 70%, transparent); }
 .heat { display: grid; grid-template-columns: 38px repeat(24, minmax(6px, 1fr)); gap: 3px; font-size: 11px; }
 .heat .cell { aspect-ratio: 1; border-radius: 3px; background: var(--primary); }

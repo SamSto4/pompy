@@ -141,7 +141,7 @@
       past.length ? s("circle", { cx: x(past[0][0]), cy: y(past[0][1]), r: 4, fill: "var(--good)" },
         s("title", {}, `Last confirmed ${p.last_confirmed}: ${Math.round(100 * past[0][1])}%`)) : null,
       s("text", { x: W - R0, y: H - 8, "text-anchor": "end" }, label(x1)),
-      s("path", { d: path(future), fill: "none", stroke: "var(--purple)", "stroke-width": 2, "stroke-dasharray": "5 5" }),
+      s("path", { d: path(future), fill: "none", stroke: "var(--ink-muted)", "stroke-width": 2, "stroke-dasharray": "5 5" }),
       s("path", { d: path(pts), fill: "none", stroke: "var(--primary)", "stroke-width": 2.5 }),
       pts.map(([t, c]) => s("circle", { cx: x(t), cy: y(c), r: 4, fill: "var(--primary)", tabindex: 0 },
         s("title", {}, `${new Date(t).toISOString().slice(0, 10)}: ${Math.round(100 * c)}%`))));
@@ -153,7 +153,7 @@
       h("div", { class: "controls small" },
         past.length ? h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--good)" }), `last confirmed, ${P.niceDate(p.last_confirmed, true)}`) : null,
         h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--primary)" }), "checked"),
-        h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--purple)" }), "fading, if not confirmed")),
+        h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--ink-muted)" }), "fading, if not confirmed")),
       h("p", { class: "small", text: say }));
   };
 })();

@@ -320,7 +320,11 @@
     const showKnows = () => { knows.textContent = ""; const k = knowledge(proj.value); (k.length ? k : ["Nothing yet for this project."]).forEach((x) => knows.append(h("li", { text: x }))); };
     proj.addEventListener("change", () => { showKnows(); draw(); });
     showKnows();
-    if (P.prefill) { ta.value = P.prefill; P.prefill = null; }
+    // Arrived from "Write a better version": bring the box into view once the page is built.
+    if (P.prefill) {
+      ta.value = P.prefill; P.prefill = null;
+      setTimeout(() => { ta.scrollIntoView({ block: "center", behavior: P.calm() ? "auto" : "smooth" }); ta.focus({ preventScroll: true }); }, 60);
+    }
     window.addEventListener("hashchange", () => { if (/^#(ask|write)$/.test(location.hash) && P.prefill) { ta.value = P.prefill; P.prefill = null; draw(); ta.focus(); } });
     P.useDraft = (text) => { ta.value = text; draw(); ta.scrollIntoView({ block: "center", behavior: P.calm() ? "auto" : "smooth" }); ta.focus(); };
 
