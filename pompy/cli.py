@@ -357,10 +357,39 @@ def _cmd_similar(args: argparse.Namespace) -> None:
     if not excerpts.count(conn):
         conn.close()
         raise SystemExit("No exchange excerpts yet. Run `pompy ingest` first.")
+    import os
+
+    from pompy import advice, facts
+
     embedder = None if args.keyword else hybrid.default_embedder(conn)
-    result = similar.similar(conn, text, embedder, limit=args.limit)
+    # The folder the prompt was sent from: --cwd, else Claude Code's project folder, else here.
+    cwd = args.cwd or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    result = similar.similar(conn, text, embedder, limit=args.limit, cwd=cwd)
+    project_key = facts.project_key_for(conn, cwd)
     conn.close()
+    fingerprint = advice.digest(text)
+    result = similar.advise(result, fingerprint, advice.load_profile(config.out_dir()))
+    if not args.no_log and result.get("role") == "task":
+        row = similar.log_row(result, fingerprint, args.session, project_key, time.time())
+        advice.log(config.data_dir(), row)
     print(json.dumps(result) if args.json else similar.render(result))
+
+
+def _cmd_impact(args: argparse.Namespace) -> None:
+    import json
+
+    from pompy import advice
+
+    rows = advice.read_log(config.data_dir())
+    conn = _open_store()
+    result = advice.impact(conn, rows)
+    conn.close()
+    path = advice.write_profile(advice.profile(result), config.out_dir())
+    if args.json:
+        print(json.dumps(result))
+        return
+    print(advice.render(result))
+    print(f"\nProcedural memory written to {path.name} (the notch reads it to pick tips).")
 
 
 def _cmd_refresh(args: argparse.Namespace) -> None:
@@ -380,6 +409,11 @@ def _cmd_refresh(args: argparse.Namespace) -> None:
         with contextlib.redirect_stderr(io.StringIO()):  # the model's progress bars
             embedded = embed.update(conn, embed.FastEmbedder())["embedded"]
     preflight.write_profile(preflight.build_profile(score.compute(conn)), config.out_dir())
+    from pompy import advice  # procedural memory: re-learn which tips you act on
+
+    advice.write_profile(
+        advice.profile(advice.impact(conn, advice.read_log(config.data_dir()))), config.out_dir()
+    )
     conn.close()
     if not args.quiet:
         print(
@@ -687,7 +721,16 @@ def main() -> None:
     p_similar.add_argument("--limit", type=int, default=5)
     p_similar.add_argument("--keyword", action="store_true", help="skip the meaning model")
     p_similar.add_argument("--json", action="store_true", help="print the raw JSON")
+    p_similar.add_argument("--cwd", help="folder the prompt was sent from (for project advice)")
+    p_similar.add_argument("--session", help="Claude Code session id, kept in the advice log")
+    p_similar.add_argument("--no-log", action="store_true", help="don't add to the advice log")
     p_similar.set_defaults(func=_cmd_similar)
+
+    p_impact = sub.add_parser(
+        "impact", help="did Pompy's tips help? shown vs held back; which tips you act on"
+    )
+    p_impact.add_argument("--json", action="store_true", help="print the raw JSON")
+    p_impact.set_defaults(func=_cmd_impact)
 
     p_refresh = sub.add_parser(
         "refresh", help="ingest new chats, embed new exchanges, update the profile (warm path)"

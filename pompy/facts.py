@@ -181,3 +181,88 @@ def refresh(conn: sqlite3.Connection, client, model: str = DEFAULT_MODEL, now=No
                          "preferences": facts.get("preferences", [])[:MAX_PREFERENCES],
                          })  # fmt: skip
     return {"projects": done, "usage": usage, "model": model}
+
+
+# ── Step 24: the project-aware notch ──────────────────────────────────────────
+
+MIN_GOAL_CONFIDENCE = 0.25  # a goal faded below this is too stale to remind you of
+MIN_PROJECT_TASKS = 10  # the project's usual gap needs at least this many task prompts
+
+
+def project_key_for(conn: sqlite3.Connection, cwd: str | None) -> str | None:
+    """The project a folder belongs to: the folder itself, or the nearest parent Pompy has seen
+    a chat in (keys are a hash of the path, as ingest makes them). None when unknown."""
+    from pathlib import PurePosixPath
+
+    from pompy import store
+
+    if not cwd:
+        return None
+    path = PurePosixPath(cwd)
+    for p in (path, *path.parents):
+        if str(p) == "/":
+            break
+        key = store.project_key(str(p))
+        if conn.execute("SELECT 1 FROM sessions WHERE project_key = ?", (key,)).fetchone():
+            return key
+    return None
+
+
+def for_cwd(
+    conn: sqlite3.Connection, cwd: str | None, missing: list[str], now: datetime | None = None
+) -> dict | None:
+    """This project's goal, and the part its prompts usually lack, when this prompt lacks it too.
+
+    The folder is matched to a project by `project_key_for`, so a chat opened in a subfolder
+    still finds its project.
+
+    Memory concept: long-term memory feeding the working set. The goal is a consolidated fact
+    (Step 19); here it is pulled into the small context Pompy assembles for one prompt.
+    """
+    from pompy import score
+
+    key = project_key_for(conn, cwd)
+    if key is None:
+        return None
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT statement, scope, confidence, last_confirmed FROM patterns "
+            "WHERE key = ? AND status = 'supported'",
+            (f"goal@{key}",),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    confidence = patterns.decayed(row["confidence"], row["last_confirmed"], now)
+    if confidence < MIN_GOAL_CONFIDENCE:
+        return None
+    names = [f.name for f in score.FEATURES]
+    tasks = conn.execute(
+        "SELECT " + ", ".join(f"s.f_{n}" for n in names) + " FROM prompt_scores s "
+        "JOIN prompts p ON p.uuid = s.uuid JOIN sessions se ON se.session_id = p.session_id "
+        "WHERE s.role = 'task' AND se.project_key = ?",
+        (key,),
+    ).fetchall()
+    gap = None
+    if len(tasks) >= MIN_PROJECT_TASKS:
+        share = {n: sum(r[f"f_{n}"] or 0 for r in tasks) / len(tasks) for n in names}
+        lacking = [n for n in names if n in missing]
+        if lacking:
+            gap = min(lacking, key=lambda n: share[n])
+            gap_share = share[gap]
+    feat = {f.name: f for f in score.FEATURES}
+    text = f"This project: {row['statement']}"
+    if gap:
+        text += (f" Your prompts here include {feat[gap].label.lower()} only "
+                 f"{gap_share * 100:.0f}% of the time. {feat[gap].tip}")  # fmt: skip
+    return {
+        "key": key,
+        "project": row["scope"].removeprefix("project: "),
+        "goal": row["statement"],
+        "confidence": round(confidence, 2),
+        "gap": gap,
+        "tip": f"project:{gap}" if gap else "project:reminder",
+        "text": text,
+    }

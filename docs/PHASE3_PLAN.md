@@ -25,7 +25,7 @@ The steps that need no API key come first. The Claude-powered agent (Step 18) wa
 - **First real run: nothing survived.** 14 claims over 282 task prompts; none supported, none contradicted. The rubric parts barely move how often something goes wrong for you (prompts without context 17% vs with 13%; without a done-definition 16% vs with 27%, but only 11 prompts had one). The closest call: inside the agents-and-models theme, prompts without context went wrong 22% vs 6% (p 0.15, n 73 vs 16), which is worth re-checking as more prompts arrive.
 - **What that teaches:** the rubric came from general prompting advice, and your own history doesn't (yet) show it predicting friction. Either the effect is small, the friction signal is too noisy, or the samples on the "with" side are too thin (only 11 prompts had a done-definition). This is exactly why claims are tested before Pompy believes them, and the reason Step 18's agent should look for other explanations instead of re-asserting the rubric.
 
-### Step 18: The hypothesis agent (`pompy think`, needs the API key)
+### Step 18: The hypothesis agent (`pompy think`, needs the API key) ✅
 - A Claude agent with tools over Pompy's memory: `search`, `get_excerpt`, `get_episode_card`, `get_pattern`, `propose_pattern`. It reads the miner's strongest patterns and the themes, proposes new hypotheses in plain words, and must find supporting **and** contradicting excerpts before it can store one.
 - Weekly and on demand; Haiku for bulk work, a larger model to judge; prompt caching for the fixed instructions.
 - **Done when:** a run stores at least one new pattern with cited evidence on both sides, and its cost is printed.
