@@ -109,7 +109,7 @@
     const selA = P.periodSelect("cmp-a", a, (v) => { a = v; draw(); });
     const selB = P.periodSelect("cmp-b", b, (v) => { b = v; draw(); });
     root.append(
-      h("p", { class: "lede", text: "Two windows over the same memory, side by side: are you improving? The numbers match `pompy compare` (same per-prompt verdicts, same definitions)." }),
+      h("p", { class: "lede", text: "Two windows over the same memory, side by side: are you improving? The numbers match `pompy compare` (same per-prompt verdicts, same definitions), except the Prompt Score rows, which read out of 10 here (the same 7 checks, scaled)." }),
       h("div", { class: "panel" },
         h("div", { class: "controls" }, h("label", { for: "cmp-a", class: "small muted", text: "Compare" }), selA, h("label", { for: "cmp-b", class: "small muted", text: "with" }), selB),
         table, warn));

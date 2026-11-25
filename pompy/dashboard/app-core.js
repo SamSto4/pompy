@@ -98,7 +98,11 @@
       h("div", { class: "in", "aria-hidden": "true" }, n, h("div", { class: "of", text: label })));
     const target = score10 == null ? C : C * (1 - Math.max(0, Math.min(10, score10)) / 10);
     if (score10 == null) n.textContent = "–";
-    else P.countUp(n, score10, { decimals: 1, ms: 1100 });
+    else {
+      P.countUp(n, score10, { decimals: 1, ms: 1100 });
+      // Settle on the same form as every other score: 5, not 5.0.
+      setTimeout(() => (n.textContent = String(score10).replace(/\.0$/, "")), P.calm() ? 0 : 1150);
+    }
     if (P.calm()) val.setAttribute("stroke-dashoffset", target.toFixed(1));
     else requestAnimationFrame(() => requestAnimationFrame(() => val.setAttribute("stroke-dashoffset", target.toFixed(1))));
     return el;
@@ -217,6 +221,8 @@
   let current = null;
   function route() {
     const want = location.hash.slice(1);
+    // A hash that is neither a section nor an old name (the skip link's #main) leaves the page as it is.
+    if (want && !TABS[want] && !ALIAS[want] && current) return;
     const name = TABS[want] ? want : ALIAS[want] || "home";
     for (const n of Object.keys(TABS)) {
       const view = document.getElementById("view-" + n);
