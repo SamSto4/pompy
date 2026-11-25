@@ -98,7 +98,10 @@ def applies(
         held = patterns.load(conn, status="supported", now=now)
     except sqlite3.Error:
         return None
-    missing = set(score.score_text(text)["missing"])
+    scored = score.score_text(text)
+    if scored["role"] != "task":  # the rules are claims about task prompts, not "yes" or questions
+        return None
+    missing = set(scored["missing"])
     hour = (now or datetime.now()).astimezone(tz).hour
     for p in held:  # strongest first
         if p["kind"] not in ("risk", "habit"):

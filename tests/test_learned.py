@@ -102,3 +102,9 @@ def test_similar_reports_the_pattern_and_renders_it(conn):
     assert result["pattern"]["key"] == "very-short@all"
     assert "Pompy has learned: Very short" in similar.render(result)
     assert "Pompy has learned: Very short" in similar.render({**result, "count": 0, "hits": []})
+
+
+def test_replies_and_short_answers_never_get_a_learned_line(conn):
+    _rec(conn, "very-short@all", STRONG)
+    assert similar.applies(conn, "yes", set(), now=NOW) is None
+    assert similar.applies(conn, "fix the nav bar", set(), now=NOW) is not None

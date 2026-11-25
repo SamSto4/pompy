@@ -31,7 +31,7 @@
     const draw = () => { out.textContent = ""; out.append(P.beliefChart(order[+sel.value])); };
     sel.addEventListener("change", draw);
     draw();
-    return P.panel("Watch a belief fade", "forgetting, on a 90 day half life", h("div", { class: "controls" }, sel), out);
+    return P.panel("Watch a belief fade", `forgetting, on a ${(P.D.learned || {}).half_life_days || 90} day half life`, h("div", { class: "controls" }, sel), out);
   }
 
   function layer(name, fact, text) {

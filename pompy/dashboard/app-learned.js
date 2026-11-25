@@ -10,7 +10,7 @@
 
   const L = () => P.D.learned || { patterns: [], retired: 0, half_life_days: 90, retire_below: 0.15 };
   const sureWord = (c) => (c >= 0.6 ? "Sure" : c >= 0.35 ? "Fairly sure" : c >= 0.15 ? "Unsure" : "Not yet");
-  const project = (p) => p.scope.replace(/^project: /, "");
+  const project = (p) => p.scope.replace(/^project: /, "").replace(/[-_]+/g, " ");
 
   function meter(c) {
     return h("div", { class: "belief-meter", title: `Confidence today: ${Math.round(100 * c)}%` },
