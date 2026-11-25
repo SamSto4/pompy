@@ -209,11 +209,11 @@
     const topModel = Object.keys(share).sort((a, b) => share[b] - share[a])[0];
     const typedCount = st.totals.prompts_by_kind.typed || 0;
     root.append(
-      h("p", { class: "lede", text: "Everything Pompy remembers about how you prompt Claude, all-time. Specificity counts how many of 7 parts a task prompt has (goal, context, limits, done definition, format, example, exact reference); friction means something went wrong right after a prompt." }),
+      h("p", { class: "lede", text: "Everything Pompy remembers about how you prompt Claude, all-time. Specificity counts how many of 7 parts a task prompt has (goal, context, limits, done definition, format, example, exact reference); went wrong means Claude had to ask, you corrected it, or something broke right after." }),
       h("div", { class: "tiles", id: "tiles" },
         tile("Typed prompts", typedCount, `${st.totals.sessions} chats · ${st.totals.projects} projects`),
         specTile(sc),
-        tile("Friction after tasks", `${sc.friction.overall.rate}%`, `${sc.friction.overall.friction} of ${sc.friction.overall.n}`),
+        wrongTile(sc.friction),
         tile("Top model", topModel ? P.modelName(topModel) : "none", topModel ? `${share[topModel]}% of replies` : ""),
         tile("Peak time", `${st.time.peak_weekday} ${String(st.time.peak_hour).padStart(2, "0")}:00`, `${st.time.active_days} active days`)),
       dayTimeline(),
@@ -245,6 +245,16 @@
     t.title = "Seven parts: " + feats.map((f) => f.label.toLowerCase()).join(", ");
     t.append(h("div", { class: "sub" }, "Most often missing: ",
       ...rarest.flatMap((f, i) => [i ? " and " : "", h("a", { href: "#habits", text: `${f.label.toLowerCase()} (in ${Math.round(pctOf(f))}%)` })])));
+    return t;
+  }
+
+  // Friction: something went wrong right after a task prompt. Name the most common kind.
+  function wrongTile(fr) {
+    const o = fr.overall;
+    const kinds = Object.entries(fr.kinds || {}).sort((a, b) => b[1] - a[1]).slice(0, 2);
+    const t = tile("Went wrong after", `${o.rate}%`, `of task prompts (${o.friction} of ${o.n})`);
+    t.title = "Went wrong means right after the prompt Claude had to ask what you meant, you corrected or interrupted it, rejected its change, asked again, or reported it broke.";
+    if (kinds.length) t.append(h("div", { class: "sub", text: "Mostly: " + kinds.map(([k, n]) => `${P.FRICTION_LABEL[k] || k} (${n})`).join(", ") }));
     return t;
   }
 
