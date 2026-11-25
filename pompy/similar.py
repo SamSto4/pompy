@@ -41,9 +41,15 @@ def similar(
     embedder=None,
     limit: int = 5,
     tz: tzinfo | None = None,
+    cwd: str | None = None,
 ) -> dict:
-    """The `limit` past exchanges most like `text`, and what happened after them."""
-    from pompy import hybrid
+    """The `limit` past exchanges most like `text`, and what happened after them.
+
+    `tips` lists every tip that could follow this prompt (a learned pattern, a lesson, this
+    project's goal and usual gap, from the folder `cwd`), strongest first. Which of them are
+    shown is decided by `advise` (the holdout and procedural memory, Phase 4).
+    """
+    from pompy import facts, hybrid, score
 
     text = " ".join(text.split())
     hits = [
@@ -55,14 +61,31 @@ def similar(
     kinds = Counter(k for h in hits for k in h["friction"].split(",") if k)
     went_wrong = sum(1 for h in hits if h["friction"])
     top_kind = kinds.most_common(1)[0][0] if kinds else None
+    lesson = LESSONS[top_kind] if top_kind and went_wrong >= 2 else None
+    scored = score.score_text(text)
+    project = None
+    if scored["role"] == "task":
+        project = facts.for_cwd(conn, cwd, scored["missing"])
+    tips = []
+    if pattern:
+        tips.append({"id": f"learned:{pattern['key']}", "text": pattern["statement"]})
+    if lesson:
+        tips.append({"id": f"lesson:{top_kind}", "text": lesson})
+    if project:
+        tips.append({"id": project["tip"], "text": project["text"]})
     return {
         "query": text,
         "mode": "hybrid" if embedder is not None else "keyword",
         "count": len(hits),
         "went_wrong": went_wrong,
         "kinds": dict(kinds),
-        "lesson": LESSONS[top_kind] if top_kind and went_wrong >= 2 else None,
+        "lesson": lesson,
         "pattern": pattern,
+        "project": project,
+        "role": scored["role"],
+        "score": scored["score"],
+        "missing": scored["missing"],
+        "tips": tips,
         "hits": [
             {
                 "uuid": h["uuid"],
@@ -125,19 +148,66 @@ def applies(
     return None
 
 
+def advise(result: dict, fingerprint: str, profile: dict | None) -> dict:
+    """Apply the holdout and procedural memory: keep only the tips to show (Phase 4).
+
+    The JSON keeps every candidate in `tips` (for the log) and marks which were `shown`; the
+    fields the notch reads (`pattern`, `lesson`, `project`) are cleared when their tip isn't.
+    """
+    from pompy import advice
+
+    decision = advice.decide([t["id"] for t in result["tips"]], fingerprint, profile)
+    shown = set(decision["shown"])
+    order = {t: i for i, t in enumerate(decision["shown"])}
+    out = {**result, **decision, "tips": result["tips"]}
+    out["shown_tips"] = sorted((t for t in result["tips"] if t["id"] in shown),
+                               key=lambda t: order[t["id"]])  # fmt: skip
+    if result["pattern"] and f"learned:{result['pattern']['key']}" not in shown:
+        out["pattern"] = None
+    if result["lesson"] and not any(t.startswith("lesson:") for t in shown):
+        out["lesson"] = None
+    if result["project"] and result["project"]["tip"] not in shown:
+        out["project"] = None
+    return out
+
+
+def log_row(result: dict, fingerprint: str, session: str | None, project_key: str | None,
+            now: float) -> dict:  # fmt: skip
+    """The advice log line for one prompt: ids and numbers only, never the prompt's words."""
+    return {
+        "at": round(now, 3),
+        "session": session,
+        "project": project_key,
+        "digest": fingerprint,
+        "role": result.get("role"),
+        "score": result.get("score"),
+        "missing": result.get("missing"),
+        "count": result["count"],
+        "went_wrong": result["went_wrong"],
+        "tips": [t["id"] for t in result["tips"]],
+        "shown": result.get("shown", [t["id"] for t in result["tips"]]),
+        "quiet": result.get("quiet", []),
+        "held_back": result.get("held_back", False),
+    }
+
+
 def render(result: dict) -> str:
     learned = result.get("pattern")
+    project = result.get("project")
+    head = []
+    if learned:
+        head.append(f"Pompy has learned: {learned['statement']}")
+    if result["lesson"]:
+        head.append(f"Lesson: {result['lesson']}")
+    if project:
+        head.append(project["text"])
     if not result["count"]:
-        none = "Nothing like this in your history yet."
-        return f"{none}\nPompy has learned: {learned['statement']}" if learned else none
+        return "\n".join(["Nothing like this in your history yet.", *head])
     out = [
         f"{result['count']} past exchanges like this ({result['mode']} search); "
-        f"{result['went_wrong']} went wrong."
+        f"{result['went_wrong']} went wrong.",
+        *head,
     ]
-    if learned:
-        out.append(f"Pompy has learned: {learned['statement']}")
-    if result["lesson"]:
-        out.append(f"Lesson: {result['lesson']}")
     out.append("")
     for h in result["hits"]:
         mark = "✕" if h["friction"] else "·"

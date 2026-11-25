@@ -67,14 +67,14 @@ Your history is analyzed **all-time**, from Pompy's first ingest onward. Nothing
 ### Phase 0: Foundations ✅
 Repo, plan, privacy rules, memory study guide.
 
-### Phase 1: Capture, patterns v1, Dashboard v1, Pre-flight v0
+### Phase 1: Capture, patterns v1, Dashboard v1, Pre-flight v0 ✅
 - **Ingest:** copy chats into Pompy's permanent store, then parse real prompts out of the noise.
 - **Patterns v1:** time, models, keywords, prompt structure (specificity score), friction.
 - **Short-term memory:** an explicit working-set object, so you can see a context window being built.
 - **Dashboard v1** (private artifact in Claude Code): keywords, model usage, activity times, top habits with before/after snippets of your real prompts.
 - **Pre-flight v0:** a hook that scores each prompt as you send it and shows tips. Rule-based, instant, no AI call.
 
-### Phase 2: Episodic memory + hybrid retrieval
+### Phase 2: Episodic memory + hybrid retrieval ✅
 - Built to the hybrid RAG design in [RAG_ARCHITECTURE.md](RAG_ARCHITECTURE.md): context-aware excerpts, keyword + vector indexes, merge and rerank, and source references back to the original.
 - Summaries follow the **three representations** rule: original source, searchable excerpts (the main evidence), and short episode cards (for locating and filtering only).
 - Each session becomes an episode: intent, outcome, friction, and a short summary written by Claude (Haiku, batched).
@@ -82,16 +82,17 @@ Repo, plan, privacy rules, memory study guide.
 - **Pre-flight v1:** "Last time you asked something like this, it took 4 corrections because…"
 - **Memory Lab:** browse your episodes and see which ones get retrieved for a prompt, and why (recency × relevance × importance).
 
-### Phase 3: Long-term memory and consolidation
+### Phase 3: Long-term memory and consolidation ✅
 - A hypothesis agent compares cases, looks for supporting **and** contradicting evidence, and stores each pattern with its evidence (layers 6–8 of the RAG architecture).
 - A consolidation job turns many episodes into durable facts: your preferences, habits, and **each project's goal**. Facts gain confidence when reinforced and decay when they stop showing up.
 - **Pre-flight v2:** project-aware advice, e.g. "Your goal in this project is X. Consider stating which page and the acceptance criteria."
 - **Memory Lab:** watch facts form, strengthen and fade over time.
 
-### Phase 4: Closing the loop
-- Measure whether Pre-flight advice helps: are your scores rising and corrections falling?
-- **Procedural memory:** Pompy learns which kinds of tips you actually act on.
-- "Ask Pompy" in the Dashboard: paste a draft and get a full rewrite.
+### Phase 4: Closing the loop (in progress, see [PHASE4_PLAN.md](PHASE4_PLAN.md))
+- ✅ An advice log, and a holdout: measure whether Pompy's tips help (are corrections falling after a tip?).
+- ✅ **Procedural memory:** Pompy learns which kinds of tips you actually act on.
+- ✅ Project-aware notch: this project's goal and its usual gap (finishes Phase 3's Pre-flight v2).
+- ✅ "Ask Pompy" in the Dashboard: paste a draft and get a full rewrite (built during Phase 1–2).
 - Experiment: Pompy as an MCP server, so Claude can query your memory mid-session.
 
 ### Phase 5: All your material (source adapters)

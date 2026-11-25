@@ -11,7 +11,7 @@ license = { text = "MIT" }
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "numpy>=2"]  # numpy: the test doubles for meaning search
 # Phase 2: local embeddings (meaning search). Optional: without it Pompy runs keyword-only.
 memory = ["fastembed>=0.9", "numpy>=2"]
 # Phase 3: the hypothesis agent (`pompy think`). Needs ANTHROPIC_API_KEY in a git-ignored .env.

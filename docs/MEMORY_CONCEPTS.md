@@ -7,7 +7,7 @@ A study guide that grows with the project. Each concept is linked to where Pompy
 | **Working / short-term (context)** | What you're holding in mind right now | Whatever is in the prompt / context window this turn | `WorkingSet`: the analysis window + current question + retrieved snippets | 1 |
 | **Episodic** | "I remember that Tuesday when…" | Time-stamped records of specific past interactions | One episode per session: intent, outcome, friction, summary, embedding | 2 |
 | **Semantic / long-term** | General facts you know | Distilled, durable knowledge about the user or world | Consolidated facts: preferences, habits, strengths, with confidence | 3 |
-| **Procedural** | Knowing *how* to ride a bike | Learned rules/skills for acting | Which coaching styles and rewrites actually improve your prompts | 4 |
+| **Procedural** | Knowing *how* to ride a bike | Learned rules/skills for acting | Which kinds of tips you act on, measured against a holdout; ignored tips go quiet (`out/advice.json`) | 4 |
 
 ## Key mechanisms
 - **Encoding:** what gets stored, and in what shape (raw text, summary, embedding, structured fields).
@@ -15,6 +15,7 @@ A study guide that grows with the project. Each concept is linked to where Pompy
 - **Consolidation:** periodically compressing many episodes into a few long-term facts (like sleep moving memories from hippocampus to cortex).
 - **Reflection:** building higher-level conclusions from lower-level facts ("you underspecify when you're in a hurry").
 - **Forgetting / decay:** facts lose confidence when they aren't reinforced. Without this, memory gets stale and noisy.
+- **Feedback / self-evaluation:** remembering the agent's own actions (the advice log) and checking what happened next, with a holdout as the fair comparison.
 - **Context management:** deciding what goes into the limited window. This is the main engineering trade-off in every agent.
 
 ## Further reading
