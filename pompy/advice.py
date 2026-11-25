@@ -73,6 +73,8 @@ def asks(tip: str) -> str | None:
     kind, _, rest = tip.partition(":")
     if kind == "lesson":
         return LESSON_ASKS.get(rest)
+    if kind == "misses":  # "misses:reference": the part similar misses lacked (outcomes.py)
+        return rest if rest in {f.name for f in score.FEATURES} else None
     if kind == "project":  # "project:done": this project's usual gap; "project:reminder": none
         return rest if rest in {f.name for f in score.FEATURES} else None
     if kind == "learned":

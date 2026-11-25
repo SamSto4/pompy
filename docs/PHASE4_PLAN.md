@@ -8,7 +8,7 @@ Rule carried over: Pompy never holds a prompt. Every tip appears **after** you s
 
 ### Step 21: The advice log ✅
 - `pompy similar` (what the notch runs after each task prompt) now appends one line to `data/advice.jsonl` (git-ignored): when, the chat's session id (`--session`), the project (matched from the folder, see Step 24), a **fingerprint** of the prompt (a 16-character hash, not the words), its score and missing parts, every tip that *could* be shown, the ones that *were* shown, and whether this prompt was held back.
-- Tip ids: `lesson:<friction kind>` (e.g. `lesson:problem`), `learned:<pattern key>`, `project:<part>` or `project:reminder`.
+- Tip ids: `misses:<part>` (added with the dashboard redesign: the part similar misses lacked), `lesson:<friction kind>` (e.g. `lesson:problem`), `learned:<pattern key>`, `project:<part>` or `project:reminder`.
 - `--no-log` skips the log (for trying things in the terminal). Questions and replies are never logged; only task prompts.
 - **Memory concept:** episodic memory of the agent's **own actions**. To learn from advice you have to remember giving it.
 - **Built:** `pompy/advice.py` (`digest`, `log`, `read_log`), `similar.log_row`, CLI flags `--cwd`, `--session`, `--no-log`.

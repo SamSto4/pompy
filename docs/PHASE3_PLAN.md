@@ -65,3 +65,12 @@ The steps that need no API key come first. The Claude-powered agent (Step 18) wa
 
 ## Privacy
 Patterns and evidence live in `data/pompy.db` (git-ignored). The agent sends excerpts to the Claude API only when you run `pompy think`, and prints what it sent.
+
+## After Phase 3: the dashboard redesign (useful output, not "went wrong")
+Asked for in a dashboard comment: measure whether Claude's replies gave you what you wanted, explain the bad ones, and cut everything that doesn't help you improve.
+- **Memory concept:** an outcome label on every episode. Episodic memory becomes useful for coaching once each episode records whether it worked, and why not.
+- **`pompy/outcomes.py`:** a verdict for each task prompt, read from your reaction to the reply: *useful* (you said it worked, thanked it, or asked to commit or ship), *moved on* (no push back; probably fine, not certain), *unclear* (Claude had to ask; a go-ahead question like "Should I start Step 4?" doesn't count), *missed* (you corrected it, re-asked, stopped it, rejected its change, or said something was wrong), *no reaction* (the chat ended). For unclear and missed ones, `cause()` reasons in three steps from what happened back to the part the prompt lacked, using Claude's own question when there is one.
+- **Overview, rebuilt:** how replies went (with the most common reason they missed), your last 20 prompts (open one to see what it lacked, Claude's reply, what you said next, and "Explain step by step" where Claude reasons over the same evidence), a view per project, and your setup (model, effort, and where in a chat replies miss). The charts that didn't help you act are gone; the day timeline stays.
+- **Better prompt page:** rewrites a rough prompt with what Pompy knows about you in that project: its goal, the parts whose absence caused your recent misses, and a past prompt of yours that worked. Suggestions are ranked by what actually caused your misses, not by what's rarest.
+- **Notch:** `pompy similar` now returns personal advice: when similar past prompts missed because they lacked a part and this prompt lacks it too, the notch says "Next time: …" in place of the generic lesson.
+- **Real result:** of task prompts you reacted to, 14% (last 30 days) missed or needed a question. The most common reason is not naming the file, page or error. Your first prompts in a chat miss most (27%, vs 8% a few prompts in).

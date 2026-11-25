@@ -18,12 +18,13 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pompy import __version__, compare, config, keywords, score, stats
+from pompy import __version__, compare, config, keywords, outcomes, score, stats
 from pompy.working_set import WorkingSet, before, parse_period
 
 TEMPLATE_DIR = Path(__file__).parent / "dashboard"
 TEXT_LIMIT = 600  # characters of each prompt shown in the dashboard
 QUESTION_LIMIT = 200  # characters of Claude's clarifying question, for prompts flagged "clarify"
+REPLY_LIMIT = 400  # characters of Claude's reply kept for prompts whose reply was not useful
 
 # ── Redaction: a last guard before text leaves the database ─────────────────
 # Only your own words are bundled (pasted blocks are already excluded), but people sometimes
@@ -212,6 +213,10 @@ def _prompt_rows(conn: sqlite3.Connection, tz) -> list[dict]:
         )
     }
     questions = _clarifying_questions(conn)
+    verdicts = outcomes.judge(conn)
+    models = outcomes.model_for(conn)
+    replies = {r[0]: r[1] for r in conn.execute("SELECT prompt_uuid, reply FROM excerpts")}
+    next_typed = outcomes.next_typed(conn)
     session_no: dict[str, int] = {}  # a small number per chat, instead of its real id
     rows = []
     for p in conn.execute(
@@ -243,6 +248,24 @@ def _prompt_rows(conn: sqlite3.Connection, tz) -> list[dict]:
         }
         if "clarify" in row["fr"] and p["uuid"] in questions:
             row["q"] = _clip(redact(questions[p["uuid"]]), QUESTION_LIMIT)
+        if p["uuid"] in models:
+            row["m"], row["e"] = models[p["uuid"]]
+        v = verdicts.get(p["uuid"])
+        if v:
+            row["v"] = v
+            missing = [f.name for f in score.FEATURES if f.name not in row["f"]]
+            why = outcomes.cause(
+                v, row["fr"], missing, questions.get(p["uuid"]), next_typed.get(p["uuid"])
+            )
+            if why:
+                row["c"] = [redact(x) for x in why]
+                part = outcomes.lacked_part(why)
+                if part:
+                    row["lk"] = part
+                if replies.get(p["uuid"]):
+                    row["rp"] = _clip(redact(replies[p["uuid"]]), REPLY_LIMIT)
+                if next_typed.get(p["uuid"]):
+                    row["nx"] = _clip(redact(next_typed[p["uuid"]]), QUESTION_LIMIT)
         rows.append(row)
     return rows
 

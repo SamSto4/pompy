@@ -5,7 +5,7 @@
   const { h } = P;
 
   // ── Claude rewrite (the `sample` capability), shared by Habits and Ask Pompy ──
-  function rewritePrompt(text, missing) {
+  function rewritePrompt(text, missing, about) {
     const tips = missing.map((n) => `- ${P.FEAT[n].label}: ${P.FEAT[n].tip}`).join("\n");
     return [
       "You are Pompy, a prompting coach. Rewrite the prompt below, which its author will send to",
@@ -14,6 +14,7 @@
       tips || "- (it already has every part; tighten wording only)",
       "Never invent facts, file names or numbers: where a detail only the author knows is needed,",
       "write a short [placeholder in brackets]. Return only the rewritten prompt, nothing else.",
+      ...(about ? ["", "What Pompy knows about this author (use it where it helps; never invent beyond it):", about] : []),
       "",
       "Prompt:",
       "<<<",
@@ -21,7 +22,7 @@
       ">>>",
     ].join("\n");
   }
-  async function streamRewrite(text, missing, outEl, statusEl) {
+  async function streamRewrite(text, missing, outEl, statusEl, about) {
     const sample = await P.cap("sample");
     if (!sample) {
       statusEl.textContent = "Asking Claude isn't available in this view.";
@@ -29,7 +30,7 @@
     }
     statusEl.textContent = "Claude is rewriting…";
     try {
-      const res = await sample(rewritePrompt(text, missing), {
+      const res = await sample(rewritePrompt(text, missing, about), {
         onText: ({ text: t }) => (outEl.textContent = t),
       });
       outEl.textContent = res.text.trim();
@@ -145,7 +146,7 @@
   }
 
   // A "make it better" block: Claude's version of a prompt, with Copy (and an optional extra button).
-  function betterBlock(getText, getMissing, extra) {
+  function betterBlock(getText, getMissing, extra, getAbout) {
     const out = h("div", { class: "quote after hidden" });
     const head = h("div", { class: "controls hidden" });
     const status = h("span", { class: "muted small" });
@@ -154,7 +155,7 @@
       btn.disabled = true;
       out.classList.remove("hidden");
       head.classList.add("hidden");
-      const text = await streamRewrite(getText(), getMissing(), out, status);
+      const text = await streamRewrite(getText(), getMissing(), out, status, getAbout ? getAbout() : null);
       btn.disabled = false;
       if (!text) return;
       head.textContent = "";
@@ -270,15 +271,46 @@
     return h("div", { class: "controls" }, open, choices, status);
   }
 
-  // ── Ask Pompy: a coach for the prompt you are about to send ──────────────
+  // ── Write a better prompt: Pompy rewrites it with what it knows about you ──
+  // What Pompy knows, for one project (or none): its goal, the parts you usually leave out, and
+  // why your recent misses there happened, plus one past prompt of yours that worked.
+  function knowledge(project) {
+    const rows = P.D.prompts.filter((r) => r.v && (!project || r.p === project));
+    const goal = ((P.D.learned || {}).patterns || []).find((x) => x.kind === "goal" && x.scope === "project: " + project);
+    const miss = rows.filter((r) => r.c).slice(-30).map((r) => r.c[1]);
+    const count = new Map(); miss.forEach((m) => count.set(m, (count.get(m) || 0) + 1));
+    const causes = [...count].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([m, n]) => `${m.replace(/^The prompt never said/, "Their prompts often left out").replace(/\.$/, "")} (${n} recent ${n === 1 ? "miss" : "misses"}).`);
+    const good = rows.filter((r) => r.v === "useful" && r.s >= 3).slice(-1)[0];
+    const lines = [];
+    if (goal) lines.push(`Project goal: ${goal.s}`);
+    causes.forEach((c) => lines.push(c));
+    if (good) lines.push(`A prompt of theirs that worked well: "${good.t.slice(0, 240)}"`);
+    return lines;
+  }
+
   P.views.ask = function (root) {
-    const ta = h("textarea", { id: "ask-draft", "aria-label": "Your prompt", placeholder: "Type the prompt you're about to send…" });
+    const ta = h("textarea", { id: "ask-draft", "aria-label": "Your prompt", placeholder: "Type a rough prompt. Pompy fills in what you usually leave out." });
+    const projects = [...new Set(P.D.prompts.filter((r) => r.v).slice(-200).map((r) => r.p))];
+    const proj = h("select", { class: "sel", "aria-label": "Project" },
+      h("option", { value: "", text: "Any project" }), projects.map((p) => h("option", { value: p, text: p.replace(/[-_]+/g, " ") })));
+    proj.value = projects[projects.length - 1] || "";
     const read = h("div", { class: "coach-read" });
+    const knows = h("ul", { class: "small muted knows" });
     const better = betterBlock(() => ta.value, () => P.S.scoreText(ta.value, false, false).missing,
-      (text) => h("button", { class: "btn", text: "Use it", onclick: () => { ta.value = text; draw(); } }));
-    root.append(h("div", { class: "panel coach" }, h("h2", { text: "What are you about to ask?" }), ta, read, better.el));
+      (text) => h("button", { class: "btn", text: "Use it", onclick: () => { ta.value = text; draw(); } }),
+      () => knowledge(proj.value).join("\n"));
+    root.append(h("div", { class: "panel coach" },
+      h("h2", { text: "Write a better prompt" }),
+      h("div", { class: "controls" }, h("label", { class: "small muted", text: "For" }), proj),
+      ta, read, better.el,
+      h("details", {}, h("summary", { class: "small muted", text: "What Pompy will tell Claude about you" }), knows)));
     let timer;
     ta.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(draw, 120); });
+    const showKnows = () => { knows.textContent = ""; const k = knowledge(proj.value); (k.length ? k : ["Nothing yet for this project."]).forEach((x) => knows.append(h("li", { text: x }))); };
+    proj.addEventListener("change", () => { showKnows(); draw(); });
+    showKnows();
+    if (P.prefill) { ta.value = P.prefill; P.prefill = null; }
+    window.addEventListener("hashchange", () => { if (location.hash === "#ask" && P.prefill) { ta.value = P.prefill; P.prefill = null; draw(); } });
 
     function draw() {
       const text = ta.value.trim();
@@ -289,7 +321,11 @@
       if (r.role !== "task") { read.append(h("p", { class: "muted", text: `Reads as a ${r.role}. Nothing to add, send it.` })); return; }
       const s = r.score;
       const cls = s >= 4 ? "good" : s >= 2 ? "ok" : "low";
-      const order = P.D.rules.features.map((f) => f.name).sort((x, y) => (x === "goal" ? -1 : y === "goal" ? 1 : P.D.score.features[x].present_pct - P.D.score.features[y].present_pct));
+      // Order the missing parts by how often leaving them out made YOUR replies miss, then by rarity.
+      const blamed = new Map();
+      P.D.prompts.forEach((x) => x.lk && (!proj.value || x.p === proj.value) && blamed.set(x.lk, (blamed.get(x.lk) || 0) + 1));
+      const order = P.D.rules.features.map((f) => f.name).sort((x, y) => (x === "goal" ? -1 : y === "goal" ? 1
+        : (blamed.get(y) || 0) - (blamed.get(x) || 0) || P.D.score.features[x].present_pct - P.D.score.features[y].present_pct));
       const next = order.filter((n) => r.missing.includes(n)).slice(0, 2);
       read.append(
         h("div", { class: "controls" },

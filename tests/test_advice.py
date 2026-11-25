@@ -277,8 +277,9 @@ def test_held_back_prompts_hide_the_tips_but_are_still_logged(memory, monkeypatc
     out = json.loads(_run(monkeypatch, capsys, "similar", "--keyword", "--json",
                           "--cwd", "/home/dev/demo-app", "add a signup page"))  # fmt: skip
     assert out["project"] is None and out["lesson"] is None and out["held_back"] is True
+    assert out["advice"] is None  # the misses tip is held back too
     row = json.loads((memory / "data" / advice.LOG_NAME).read_text())
-    assert row["held_back"] and row["tips"] == ["project:reminder"] and row["shown"] == []
+    assert row["held_back"] and "project:reminder" in row["tips"] and row["shown"] == []
 
 
 def test_no_log_and_non_task_prompts_leave_the_log_alone(memory, monkeypatch, capsys):

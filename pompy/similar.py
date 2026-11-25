@@ -58,6 +58,7 @@ def similar(
         if " ".join(h["prompt"].split()) != text  # not the prompt itself, if already stored
     ][:limit]
     pattern = applies(conn, text, {h["uuid"] for h in hits}, tz=tz)
+    misses, why = from_misses(conn, text, [h["uuid"] for h in hits])
     kinds = Counter(k for h in hits for k in h["friction"].split(",") if k)
     went_wrong = sum(1 for h in hits if h["friction"])
     top_kind = kinds.most_common(1)[0][0] if kinds else None
@@ -69,6 +70,8 @@ def similar(
     tips = []
     if pattern:
         tips.append({"id": f"learned:{pattern['key']}", "text": pattern["statement"]})
+    if misses:
+        tips.append({"id": f"misses:{misses['part']}", "text": misses["text"]})
     if lesson:
         tips.append({"id": f"lesson:{top_kind}", "text": lesson})
     if project:
@@ -81,6 +84,7 @@ def similar(
         "kinds": dict(kinds),
         "lesson": lesson,
         "pattern": pattern,
+        "advice": misses,
         "project": project,
         "role": scored["role"],
         "score": scored["score"],
@@ -95,10 +99,50 @@ def similar(
                 "outcome": h["outcome"],
                 "friction": [k for k in h["friction"].split(",") if k],
                 "found_by": [m for m in ("keyword", "meaning") if h.get(f"{m}_rank") is not None],
+                "verdict": why.get(h["uuid"], {}).get("verdict"),
+                "why": why.get(h["uuid"], {}).get("steps"),
             }
             for h in hits
         ],
     }
+
+
+ADD = {
+    "reference": "name the file, page or error",
+    "context": "say where this happens and why",
+    "constraints": "say what to keep or avoid",
+    "done": "say how you'll check it worked",
+    "example": "show what it should look like",
+    "format": "say what shape of answer you want",
+}
+
+
+def from_misses(conn: sqlite3.Connection, text: str, uuids: list[str]) -> tuple[dict | None, dict]:
+    """Personal advice from how similar past prompts went: the part their misses lacked, if this
+    prompt lacks it too. Returns (advice or None, {uuid: explanation}).
+
+    Deductive: each similar miss is traced to the part its prompt lacked (`outcomes.cause`);
+    the part blamed most often, when this prompt lacks it too, becomes the tip.
+    """
+    from pompy import outcomes, score
+
+    try:
+        why = outcomes.explain(conn, uuids)
+    except sqlite3.Error:
+        return None, {}
+    scored = score.score_text(text)
+    if scored["role"] != "task":
+        return None, why
+    parts = Counter(w["part"] for w in why.values() if w["part"])
+    for part, n in parts.most_common():
+        if part in scored["missing"] and part in ADD:
+            return {
+                "part": part,
+                "times": n,
+                "text": f"{n} similar prompt{'s' if n > 1 else ''} missed because "
+                f"{'they' if n > 1 else 'it'} left this out: {ADD[part]}.",
+            }, why
+    return None, why
 
 
 def applies(
@@ -166,6 +210,8 @@ def advise(result: dict, fingerprint: str, profile: dict | None) -> dict:
         out["pattern"] = None
     if result["lesson"] and not any(t.startswith("lesson:") for t in shown):
         out["lesson"] = None
+    if result.get("advice") and f"misses:{result['advice']['part']}" not in shown:
+        out["advice"] = None
     if result["project"] and result["project"]["tip"] not in shown:
         out["project"] = None
     return out
@@ -197,7 +243,9 @@ def render(result: dict) -> str:
     head = []
     if learned:
         head.append(f"Pompy has learned: {learned['statement']}")
-    if result["lesson"]:
+    if result.get("advice"):
+        head.append(f"Next time: {result['advice']['text']}")
+    if result["lesson"] and not result.get("advice"):
         head.append(f"Lesson: {result['lesson']}")
     if project:
         head.append(project["text"])

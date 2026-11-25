@@ -169,6 +169,10 @@ table.cmp td.indent { padding-left: 22px; color: var(--muted); }
 .layer { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); background: var(--panel); display: flex; flex-direction: column; gap: 6px; }
 .layer .tag { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--purple); }
 .hidden { display: none !important; }
+.stack { display: flex; height: 18px; border-radius: var(--radius-full); overflow: hidden; gap: 2px; margin: 10px 0 8px; }
+.big-line { font-size: 1.1rem; }
+.big-line b { font-family: var(--font-display); font-size: 2rem; }
+ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
 .beliefs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; }
 .belief { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--space-4); background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
 .belief .tag { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--purple); }
@@ -236,7 +240,7 @@ ol.parts li::marker { color: var(--purple); font-weight: 600; }
       <a href="#habits">Habits</a>
       <a href="#learned">Learned</a>
       <a href="#prompts">Prompts</a>
-      <a href="#ask">Ask Pompy</a>
+      <a href="#ask">Better prompt</a>
       <a href="#memory">Memory Lab</a>
       <a href="#compare">Compare</a>
     </nav>
@@ -254,6 +258,7 @@ ol.parts li::marker { color: var(--purple); font-weight: 600; }
 </main>
 <script src="scorer.js"></script>
 <script src="app-core.js"></script>
+<script src="app-overview.js"></script>
 <script src="app-tabs.js"></script>
 <script src="app-lab.js"></script>
 <script src="app-learned.js"></script>

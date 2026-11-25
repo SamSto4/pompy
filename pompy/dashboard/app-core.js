@@ -202,67 +202,13 @@
 
   }
 
-  // ── Overview ─────────────────────────────────────────────────────────────
-  P.views.overview = function (root) {
-    const D = P.D, st = D.stats, sc = D.score;
-    const share = st.models.share;
-    const topModel = Object.keys(share).sort((a, b) => share[b] - share[a])[0];
-    const typedCount = st.totals.prompts_by_kind.typed || 0;
-    root.append(
-      h("p", { class: "lede", text: "Everything Pompy remembers about how you prompt Claude, all-time. Specificity counts how many of 7 parts a task prompt has (goal, context, limits, done definition, format, example, exact reference); went wrong means Claude had to ask, you corrected it, or something broke right after." }),
-      h("div", { class: "tiles", id: "tiles" },
-        tile("Typed prompts", typedCount, `${st.totals.sessions} chats · ${st.totals.projects} projects`),
-        specTile(sc),
-        wrongTile(sc.friction),
-        tile("Top model", topModel ? P.modelName(topModel) : "none", topModel ? `${share[topModel]}% of replies` : ""),
-        tile("Peak time", `${st.time.peak_weekday} ${String(st.time.peak_hour).padStart(2, "0")}:00`, `${st.time.active_days} active days`)),
-      dayTimeline(),
-      monthly(),
-      h("div", { class: "grid2" },
-        P.panel("Specificity of your task prompts", "how many of the 7 rubric parts each prompt had",
-          P.bars(sc.score.distribution.map((n, i) => ({ name: `${i} of 7 parts`, value: n }))),
-          h("h3", { text: "The 7 parts" }),
-          h("ol", { class: "parts" }, D.rules.features.map((f) =>
-            h("li", {}, h("b", { text: f.label }), h("span", { class: "muted", text: ` ${f.tip}` }))))),
-        P.panel("What your task prompts include", "share of task prompts with each part",
-          P.bars(Object.values(sc.features).map((f) => ({ name: f.label, value: f.present_pct })).sort((a, b) => b.value - a.value), { max: 100, suffix: "%" }))),
-      h("div", { class: "grid2" }, keywordsPanel(), stylePanel()),
-      h("div", { class: "grid2" },
-        P.panel("Models that answered", "share of Claude's replies",
-          P.bars(Object.entries(share).map(([k, v]) => ({ name: P.modelName(k), value: v })), { max: 100, suffix: "%" })),
-        P.panel("Projects", "prompts per project",
-          P.bars(st.projects.slice(0, 10).map((p) => ({ name: p.name || p.key, value: p.prompts }))))));
+  // ── Shared by the Overview (app-overview.js) ─────────────────────────────
+  P.tile = function (label, value, sub) {
+    return h("div", { class: "tile" }, h("div", { class: "label", text: label }), h("div", { class: "value", text: value }), h("div", { class: "sub", text: sub }));
   };
 
-  // Specificity: how many of the 7 prompt parts a task prompt has. Says which parts, and which
-  // two you leave out most, so the number means something.
-  function specTile(sc) {
-    const feats = P.D.rules.features;
-    const pctOf = (f) => (sc.features[f.name] || {}).present_pct ?? 0;
-    const rarest = [...feats].sort((a, b) => pctOf(a) - pctOf(b)).slice(0, 2);
-    const t = tile("Specificity", `${sc.score.mean} of 7`, `parts per task prompt, on average (${sc.scored_prompts} prompts)`);
-    t.title = "Seven parts: " + feats.map((f) => f.label.toLowerCase()).join(", ");
-    t.append(h("div", { class: "sub" }, "Most often missing: ",
-      ...rarest.flatMap((f, i) => [i ? " and " : "", h("a", { href: "#habits", text: `${f.label.toLowerCase()} (in ${Math.round(pctOf(f))}%)` })])));
-    return t;
-  }
-
-  // Friction: something went wrong right after a task prompt. Name the most common kind.
-  function wrongTile(fr) {
-    const o = fr.overall;
-    const kinds = Object.entries(fr.kinds || {}).sort((a, b) => b[1] - a[1]).slice(0, 2);
-    const t = tile("Went wrong after", `${o.rate}%`, `of task prompts (${o.friction} of ${o.n})`);
-    t.title = "Went wrong means right after the prompt Claude had to ask what you meant, you corrected or interrupted it, rejected its change, asked again, or reported it broke.";
-    if (kinds.length) t.append(h("div", { class: "sub", text: "Mostly: " + kinds.map(([k, n]) => `${P.FRICTION_LABEL[k] || k} (${n})`).join(", ") }));
-    return t;
-  }
-
-  function tile(label, value, sub) {
-    return h("div", { class: "tile" }, h("div", { class: "label", text: label }), h("div", { class: "value", text: value }), h("div", { class: "sub", text: sub }));
-  }
-
   // One row per day, one dot per prompt at the time you sent it.
-  function dayTimeline() {
+  P.dayTimeline = function () {
     const readout = h("div", { class: "readout", text: "Point at a dot to see the prompt." });
     const chartBox = h("div", {});
     const note = h("p", { class: "muted small" });
@@ -270,7 +216,7 @@
     const sel = P.periodSelect("tl-period", period, (v) => { period = v; draw(); });
     const legend = h("div", { class: "chips small" },
       h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--accent)" }), "a prompt"),
-      h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--note)" }), "something went wrong after it"));
+      h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--note)" }), "reply was unclear or missed"));
 
     function draw() {
       const rows = P.D.prompts.filter(P.period(period).test);
@@ -307,9 +253,9 @@
         svg.append(s("text", { x: padL - 8, y: y + fs * 0.35, "text-anchor": "end", class: list.length ? "" : "faint", style: `font-size:${fs}px` }, `${wd} ${P.niceDate(day)}`));
         if (list.length) svg.append(s("text", { x: W - padR + 6, y: y + fs * 0.35, style: `font-size:${fs}px` }, list.length));
         list.forEach((r) => {
-          const bad = r.fr && r.fr.length;
+          const bad = r.v === "unclear" || r.v === "missed";
           const words = (r.t || "").replace(/\s+/g, " ").trim();
-          const say = `${wd} ${P.niceDate(day)}, ${r.hh} · ${r.p}${bad ? " · something went wrong after" : ""} · ${words.length > 90 ? words.slice(0, 89) + "…" : words}`;
+          const say = `${wd} ${P.niceDate(day)}, ${r.hh} · ${r.p}${bad ? " · reply unclear or missed" : ""} · ${words.length > 90 ? words.slice(0, 89) + "…" : words}`;
           const dot = s("circle", { cx: x(r.hh), cy: y, r: dotR, fill: bad ? "var(--note)" : "var(--accent)", "fill-opacity": 0.75, tabindex: 0 }, s("title", {}, say));
           dot.addEventListener("mouseenter", () => (readout.textContent = say));
           dot.addEventListener("focus", () => (readout.textContent = say));
@@ -323,113 +269,5 @@
     draw();
     return P.panel("Your days with Claude", `each dot is a prompt, at the time you sent it (${P.D.meta.timezone})`,
       h("div", { class: "controls" }, sel, legend), chartBox, readout, note);
-  }
-
-  // Per month: how many prompts, and how many of your task prompts were specific, okay or vague.
-  function monthly() {
-    const bands = [
-      { key: "specific", label: "specific (4+ parts)", color: "var(--good)", test: (r) => r.r === "task" && r.s >= 4 },
-      { key: "okay", label: "okay (2 or 3 parts)", color: "var(--primary)", test: (r) => r.r === "task" && r.s >= 2 && r.s < 4 },
-      { key: "vague", label: "vague (0 or 1 part)", color: "var(--purple)", test: (r) => r.r === "task" && r.s < 2 },
-      { key: "other", label: "replies, follow-ups, commands", color: "var(--line)", test: (r) => r.r !== "task" },
-    ];
-    const byMonth = {};
-    for (const r of P.D.prompts) {
-      const mo = r.d.slice(0, 7);
-      byMonth[mo] ??= { specific: 0, okay: 0, vague: 0, other: 0, total: 0 };
-      const b = bands.find((bd) => bd.test(r));
-      byMonth[mo][b.key]++;
-      byMonth[mo].total++;
-    }
-    const months = Object.keys(byMonth).sort();
-    const multiYear = months.length && months[0].slice(0, 4) !== months[months.length - 1].slice(0, 4);
-    const moName = (mo) => P.MON[+mo.slice(5) - 1] + (multiYear ? " " + mo.slice(2, 4) : "");
-    const W = 900, H = 230, padL = 12, padB = 24, padT = 22;
-    const svg = s("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Prompts per month, split by how specific they were" });
-    const maxT = Math.max(1, ...months.map((mo) => byMonth[mo].total));
-    const bw = (W - padL) / Math.max(1, months.length);
-    const hOf = (n) => ((H - padB - padT) * n) / maxT;
-    const readout = h("div", { class: "readout", text: "Point at a month to see the split." });
-    months.forEach((mo, i) => {
-      const c = byMonth[mo];
-      const tasks = c.specific + c.okay + c.vague;
-      const x0 = padL + i * bw + bw * 0.2, w = bw * 0.6;
-      const g = s("g", { tabindex: 0, class: "month" });
-      let y = H - padB;
-      for (const b of bands) {
-        if (!c[b.key]) continue;
-        const hh = hOf(c[b.key]);
-        y -= hh;
-        g.append(s("rect", { x: x0, y, width: w, height: hh, fill: b.color }));
-      }
-      const share = tasks ? Math.round((100 * c.specific) / tasks) : null;
-      const say = `${moName(mo)}: ${c.total} prompts. Of your ${tasks} task prompts, ${c.specific} specific, ${c.okay} okay, ${c.vague} vague.`;
-      g.append(s("title", {}, say));
-      g.addEventListener("mouseenter", () => (readout.textContent = say));
-      g.addEventListener("focus", () => (readout.textContent = say));
-      svg.append(g, s("text", { x: x0 + w / 2, y: H - 7, "text-anchor": "middle" }, moName(mo)));
-      if (share != null) svg.append(s("text", { x: x0 + w / 2, y: y - 6, "text-anchor": "middle", class: "strong" }, `${share}% specific`));
-    });
-    const legend = h("div", { class: "chips small" }, bands.map((b) =>
-      h("span", { class: "legend" }, h("i", { class: "dot sq", style: `background:${b.color}` }), b.label)));
-    const parts = P.D.rules.features.map((f) => f.label.toLowerCase()).join(", ");
-    const gap = missingMonths(months);
-    return P.panel("Your prompts over time", "the taller the green, the clearer you were",
-      legend, svg, readout,
-      h("p", { class: "muted small", text: `A task prompt counts as specific when it has at least 4 of these 7 parts: ${parts}.` }),
-      gap.length ? h("p", { class: "muted small", text: `No data for ${gap.map(moName).join(", ")}: those transcripts were deleted by Claude Code's 30-day cleanup before Pompy existed.` }) : null);
-  }
-  function missingMonths(months) {
-    if (months.length < 2) return [];
-    const out = [];
-    let [y, m] = months[0].split("-").map(Number);
-    const last = months[months.length - 1];
-    for (;;) {
-      m++;
-      if (m > 12) { m = 1; y++; }
-      const k = `${y}-${String(m).padStart(2, "0")}`;
-      if (k >= last) break;
-      if (!months.includes(k)) out.push(k);
-    }
-    return out;
-  }
-
-  // What you keep asking about, and how each theme tends to go (from `pompy themes`).
-  function themesPanel() {
-    const th = P.D.themes;
-    if (!th || !th.length) return null;
-    const maxSize = Math.max(...th.map((t) => t.size));
-    const worst = [...th].filter((t) => t.size >= 10).sort((a, b) => b.went_wrong_pct - a.went_wrong_pct)[0];
-    const rows = th.map((t) => {
-      const name = t.label.length ? t.label.join(" · ") : "short replies and one-liners";
-      const tone = t.went_wrong_pct >= 20 ? "bad" : t.went_wrong_pct >= 12 ? "mid" : "good";
-      return h("div", { class: "theme-row", title: t.example ? `e.g. "${t.example}"` : "" },
-        h("div", { class: "theme-name" }, h("b", { text: name }), h("span", { class: "muted small", text: ` ${t.size} prompts` })),
-        h("div", { class: "bar-track" }, h("div", { class: "bar-fill", style: `width:${Math.max(2, (100 * t.size) / maxSize)}%` })),
-        h("span", { class: "chip theme-" + tone, text: `${Math.round(t.went_wrong_pct)}% went wrong` }),
-        h("span", { class: "muted small mono", text: `${t.mean_score}/7` }));
-    });
-    return P.panel("What you ask Claude about", "your task prompts, grouped by meaning",
-      worst ? h("p", { class: "note", text: `Most trouble: "${worst.label.join(" · ")}". ${Math.round(worst.went_wrong_pct)}% of those prompts went wrong. Be most specific there.` }) : null,
-      h("div", { class: "themes" }, rows),
-      h("p", { class: "small muted", text: "Hover a theme for an example. Themes overlap: your prompts form a continuum, so treat these as a map, not hard categories." }));
-  }
-
-  function keywordsPanel() {
-    const kw = P.D.keywords;
-    const terms = (kw.top_terms || []).slice(0, 15);
-    return P.panel("Your most used words", "how many of your prompts use each word",
-      P.bars(terms.map((t) => ({ name: t.term, value: t.prompts, title: `${t.term}: in ${t.prompts} prompts, ${t.sessions} chats` }))),
-      h("h3", { text: "Phrases you repeat" }),
-      h("div", { class: "chips" }, (kw.top_phrases || []).slice(0, 14).map((p) => h("span", { class: "chip" }, p.phrase, h("span", { class: "muted mono", text: String(p.prompts) })))));
-  }
-  function stylePanel() {
-    const kw = P.D.keywords;
-    const style = kw.opening_style || {};
-    const verbs = Object.entries((kw.action_verbs || {}).opening || {}).slice(0, 10);
-    return P.panel("How you open a prompt", "first words of each typed prompt",
-      P.bars(Object.entries(style).map(([k, v]) => ({ name: k, value: v }))),
-      verbs.length ? h("h3", { text: "Verbs you lead with" }) : null,
-      verbs.length ? h("div", { class: "chips" }, verbs.map(([v, n]) => h("span", { class: "chip" }, v, h("span", { class: "muted mono", text: String(n) })))) : null);
-  }
+  };
 })();
