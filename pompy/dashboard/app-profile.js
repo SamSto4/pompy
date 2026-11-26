@@ -110,7 +110,7 @@
     const bars = h("div", { class: "recent-scores", role: "img", "aria-label": `Your last ${lastN.length} Prompt Scores` },
       lastN.map((r, i) => h("i", { class: P.band(r.s), title: `${P.when(r)}: ${P.tenText(r.s)}/10`, style: `height:${Math.max(6, (100 * r.s) / 7)}%;animation-delay:${i * 25}ms` })));
     root.append(h("div", { class: "grid2" },
-      P.panel("Every prompt", `your last ${lastN.length}, oldest on the left`, bars,
+      P.panel("Every prompt", `your last ${lastN.length}, oldest on the left`, quip(rows), bars,
         h("div", { class: "chips small" },
           h("span", { class: "legend" }, h("i", { class: "dot sq", style: "background:var(--accent)" }), "clear (5.7+)"),
           h("span", { class: "legend" }, h("i", { class: "dot sq", style: "background:var(--primary)" }), "okay"),
@@ -130,6 +130,34 @@
     root.append(h("div", { class: "grid2" }, tonePanel(), improvePanel()));
     root.append(projectsMini());
   };
+
+  // A little line that changes with how clear your last few prompts were. Picked from your last 5
+  // scores (and whether they beat the 5 before), so it moves as you send prompts. Tap to get another.
+  const QUIPS = {
+    great: ["Crystal clear. Claude barely has to guess.", "You're writing prompts Claude could frame and hang.", "Goal, context, done. Chef's kiss.", "Five clear prompts in a row? Claude owes you a coffee."],
+    rising: ["Look at that climb. Your last few beat the ones before.", "Sharper every send. Keep stacking.", "Trending up: Claude can feel the difference.", "Getting clearer. The bars don't lie."],
+    good: ["Solid. One more detail and it's a 10.", "Clear enough to work, close enough to shine.", "Good bones. Add how you'll know it worked.", "Halfway to telepathy. Say what 'done' looks like."],
+    slipping: ["Quick ones lately? Claude's been filling in the blanks.", "A bit foggy recently. Name the file, name the goal.", "Your prompts got shorter than your patience. Happens.", "Dipped a little. One sentence of context fixes most of it."],
+    vague: ["Claude is good, but it isn't a mind reader (yet).", "Short and mysterious. Great for poems, rough for code.", "'Fix it' is a vibe, not a prompt.", "Give Claude a map: what, where, and what 'done' means."],
+    none: ["Send a task prompt and I'll have something to say.", "Nothing scored yet. Your first prompt sets the tone."],
+  };
+  function quip(rows) {
+    const last = rows.slice(-5), before = rows.slice(-10, -5);
+    const a = last.length ? tenOf(avg(last)) : null, b = before.length ? tenOf(avg(before)) : null;
+    const mood = a == null ? "none" : a >= 5.7 ? "great" : b != null && a - b >= 1 ? "rising" : b != null && b - a >= 1 ? "slipping" : a >= 2.9 ? "good" : "vague";
+    const pool = QUIPS[mood];
+    let i = rows.length % pool.length;
+    const text = h("span", { class: "quip-text", text: pool[i] });
+    const btn = h("button", { class: "quip", type: "button", "aria-label": "Show another line", title: "Tap for another" },
+      h("span", { class: "quip-mark", "aria-hidden": "true", text: "“" }), text,
+      h("span", { class: "quip-meta", text: a == null ? "" : `last 5: ${a}/10${b != null ? ` · before: ${b}/10` : ""}` }));
+    btn.addEventListener("click", () => {
+      i = (i + 1) % pool.length;
+      text.classList.remove("swap"); void text.offsetWidth; text.classList.add("swap");
+      text.textContent = pool[i];
+    });
+    return btn;
+  }
 
   function missingLine(r) {
     const has = new Set(r.f);
