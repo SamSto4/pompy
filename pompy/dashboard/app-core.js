@@ -180,7 +180,7 @@
   // ── boot ─────────────────────────────────────────────────────────────────
   P.start = async function () {
     try {
-      const res = await fetch("data.json");
+      const res = await fetch("data.json", { cache: "no-cache" }); // always the latest publish
       if (!res.ok) throw new Error(`data.json answered ${res.status}`);
       P.D = await res.json();
     } catch (e) {

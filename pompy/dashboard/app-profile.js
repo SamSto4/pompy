@@ -118,7 +118,7 @@
           h("span", { class: "legend" }, h("i", { class: "dot sq", style: "background:var(--accent)" }), "clear (5.7+)"),
           h("span", { class: "legend" }, h("i", { class: "dot sq", style: "background:var(--primary)" }), "okay"),
           h("span", { class: "legend" }, h("i", { class: "dot sq", style: "background:var(--danger)" }), "vague (under 2.9)"))),
-      P.panel("Your average by month", "out of 10", trend((sc.score || {}).by_month || {}))));
+      tokensMini()));
 
     // The factors, like the deck: how often each check shows up in your prompts.
     const feats = P.D.rules.features.map((f) => ({ f, pct: ((sc.features || {})[f.name] || {}).present_pct ?? 0 }));
@@ -162,6 +162,86 @@
     return btn;
   }
 
+  // ── Tokens: exactly what your prompts cost, from the API's own numbers ───
+  // Memory concept: the context window. Each reply re-sends the whole chat so far, so a prompt
+  // deep in a long chat costs more than the same prompt in a fresh one.
+  P.fmtTok = (n) => (n == null ? "–" : n >= 1e9 ? (n / 1e9).toFixed(2).replace(/\.?0+$/, "") + "B" : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : n >= 1e3 ? Math.round(n / 1e3) + "K" : String(n));
+  const T = () => P.D.tokens || null;
+  function weekSums() {
+    const t = T(); if (!t) return [0, 0];
+    let a = 0, b = 0;
+    for (const [d, v] of Object.entries(t.by_day)) { if (d > daysAgo(7)) a += v.total; else if (d > daysAgo(14)) b += v.total; }
+    return [a, b];
+  }
+  function longChatLine() {
+    const t = T(); if (!t) return null;
+    const first = t.by_position[0], last = [...t.by_position].reverse().find((x) => x.mean && x.prompts >= 5);
+    if (!first || !first.mean || !last || last === first) return null;
+    const x = Math.round((10 * last.mean) / first.mean) / 10;
+    return x >= 1.3 ? `A prompt after #${last.label.replace(/[–+].*/, "")} in a chat costs ${x}× one in the first five: Claude re-reads the whole chat every time. Start fresh with a short summary.` : null;
+  }
+  function tokensMini() {
+    const t = T();
+    if (!t) return P.panel("Your tokens", null, h("p", { class: "muted", text: "Run pompy publish to count your tokens." }));
+    const [wk, prev] = weekSums();
+    const tasks = P.D.prompts.filter((r) => r.tk && r.k === "typed");
+    const per = tasks.length ? median(tasks.map((r) => r.tk)) : null;
+    const big = h("div", { class: "value" });
+    const tt = t.total.total;
+    if (tt >= 1e9) P.countUp(big, tt / 1e9, { decimals: 2, suffix: "B" });
+    else P.countUp(big, tt / 1e6, { decimals: 1, suffix: "M" });
+    const line = longChatLine();
+    return h("div", { class: "panel" },
+      h("div", { class: "panel-head" }, h("h2", { text: "Your tokens" }), h("a", { class: "small", href: "#analytics", text: "See where they went →" })),
+      h("div", { class: "tok-row" },
+        h("div", { class: "tile" }, h("div", { class: "label", text: "All time" }), big, h("div", { class: "sub", text: `${t.reread_pct}% was Claude re-reading the chat` })),
+        h("div", { class: "tile" }, h("div", { class: "label", text: "This week" }), h("div", { class: "value", text: P.fmtTok(wk) }),
+          h("div", { class: "sub" }, prev ? h("span", { class: wk <= prev ? "better" : "worse", text: wk <= prev ? `▼ ${Math.round(100 - (100 * wk) / prev)}% vs last week` : `▲ ${Math.round((100 * wk) / prev - 100)}% vs last week` }) : "no data last week")),
+        h("div", { class: "tile" }, h("div", { class: "label", text: "Per prompt" }), h("div", { class: "value", text: P.fmtTok(per) }), h("div", { class: "sub", text: "typical prompt, all replies included" }))),
+      line ? h("p", { class: "note", text: line }) : null);
+  }
+  function median(xs) { const o = [...xs].sort((a, b) => a - b); const m = o.length >> 1; return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2; }
+
+  function tokensSection() {
+    const t = T(); if (!t) return [];
+    const days = Object.entries(t.by_day).filter(([d]) => d > daysAgo(30));
+    const max = Math.max(1, ...days.map(([, v]) => v.total));
+    const W = 900, H = 160, B = 22, bw = (W / Math.max(1, days.length)) * 0.7;
+    const svg = s("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Tokens per day, last 30 days" },
+      days.map(([d, v], i) => {
+        const x = (i + 0.15) * (W / days.length), hgt = ((H - B - 8) * v.total) / max;
+        return s("g", { class: "tbar" },
+          s("rect", { x, y: H - B - hgt, width: bw, height: Math.max(1, hgt), rx: 3, fill: "var(--primary)", style: `animation-delay:${i * 18}ms` }, s("title", {}, `${P.niceDate(d)}: ${P.fmtTok(v.total)} tokens (${P.fmtTok(v.output)} written by Claude)`)),
+          i % Math.ceil(days.length / 6) === 0 ? s("text", { x: x + bw / 2, y: H - 6, "text-anchor": "middle" }, P.niceDate(d)) : null);
+      }));
+    const projects = Object.entries(t.by_project).slice(0, 8).map(([name, v]) => ({ name: project(name), value: v.total }));
+    const pos = t.by_position.filter((b) => b.mean);
+    const kinds = [["cache_read", "Re-reading the chat", "var(--primary)"], ["cache_write", "Saving new context", "var(--accent)"], ["output", "Claude writing", "var(--success)"], ["input", "New input", "var(--ink-muted)"]];
+    const tot = t.total.total || 1;
+    const chats = h("table", { class: "cmp" },
+      h("thead", {}, h("tr", {}, ["Chat", "Project", "Prompts", "Replies", "Tokens"].map((x) => h("th", { text: x })))),
+      h("tbody", {}, t.top_chats.map((c) => h("tr", {},
+        h("td", { text: c.si ? `Chat ${c.si}` : "Agent run", title: c.si ? "" : "A chat with no typed prompt: a subagent or tool run" }), h("td", { text: project(c.project) }), h("td", { class: "num", text: c.prompts }),
+        h("td", { class: "num", text: c.replies }), h("td", { class: "num", text: P.fmtTok(c.total) })))));
+    return [
+      h("h2", { class: "section-title", text: "Tokens" }),
+      h("p", { class: "lede", text: `Exact counts from Claude Code's own records: ${P.fmtTok(tot)} tokens over ${t.replies.toLocaleString()} replies. Chats in the Claude app aren't included: they don't record tokens.` }),
+      h("div", { class: "grid2" },
+        P.panel("Where they go", "every reply re-sends the chat so far",
+          h("div", { class: "tone", role: "img", "aria-label": kinds.map(([k, l]) => `${l}: ${Math.round((100 * t.total[k]) / tot)}%`).join(", ") },
+            kinds.filter(([k]) => t.total[k]).map(([k, l, c]) => h("div", { title: `${l}: ${P.fmtTok(t.total[k])}`, style: `flex:${t.total[k]};background:${c}` }))),
+          h("div", { class: "chips small" }, kinds.map(([k, l, c]) => h("span", { class: "legend" }, h("i", { class: "dot sq", style: `background:${c}` }), `${l} ${((100 * t.total[k]) / tot).toFixed(1)}%`))),
+          h("p", { class: "small muted", text: "Re-reading is the context window at work: Claude has no memory between replies, so it reads the whole chat again each time. The prompt cache makes that cheaper, not free." })),
+        P.panel("Cost by place in the chat", "average tokens for one prompt",
+          P.bars(pos.map((b) => ({ name: `prompts ${b.label}`, value: b.mean })), { fmtNum: P.fmtTok }),
+          longChatLine() ? h("p", { class: "note", text: longChatLine() }) : null)),
+      P.panel("Tokens per day", "last 30 days", h("div", { class: "chart-scroll" }, svg)),
+      h("div", { class: "grid2" },
+        P.panel("By project", "all time", P.bars(projects, { fmtNum: P.fmtTok })),
+        P.panel("Your costliest chats", `top ${t.top_chats.length}`, h("div", { class: "scroll-x" }, chats))),
+    ];
+  }
+
   // The factor panel's corner line: your strongest check and the one you skip most, with a wink.
   function factorLine(feats) {
     if (!feats.length) return "";
@@ -189,35 +269,6 @@
     return h("span", { class: d > 0 ? "better" : "worse", text: d > 0 ? ` ▲ ${d}` : ` ▼ ${-d}` });
   }
 
-  // A small area chart of the monthly average, on the 10-point scale.
-  function trend(byMonth) {
-    const months = Object.keys(byMonth).sort();
-    if (months.length < 2) return h("p", { class: "muted small", text: "A trend needs two months of prompts." });
-    const pts = months.map((m) => tenOf(byMonth[m]));
-    const W = 520, H = 120, L = 28, R = 12, T = 12, B = 22;
-    const x = (i) => L + ((W - L - R) * i) / (months.length - 1);
-    const y = (v) => T + (H - T - B) * (1 - v / 10);
-    const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
-    const area = `${line}L${x(pts.length - 1)},${y(0)}L${x(0)},${y(0)}Z`;
-    const path = s("path", { class: "ln", d: line });
-    const svg = s("svg", { class: "spark", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": months.map((m, i) => `${m}: ${pts[i]}`).join(", ") },
-      [0, 5, 10].map((v) => s("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, v)),
-      s("path", { class: "area", d: area }), path,
-      pts.map((v, i) => s("circle", { cx: x(i), cy: y(v), r: 4 }, s("title", {}, `${months[i]}: ${v}/10`))),
-      months.map((m, i) => s("text", { x: x(i), y: H - 4, "text-anchor": i === 0 ? "start" : i === months.length - 1 ? "end" : "middle" }, P.MON[+m.slice(5) - 1])));
-    // Draw the line in once, left to right.
-    if (!P.calm()) requestAnimationFrame(() => {
-      const len = path.getTotalLength ? path.getTotalLength() : 0;
-      if (!len) return;
-      path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
-      path.getBoundingClientRect();
-      path.style.transition = "stroke-dashoffset 1200ms cubic-bezier(0.23, 1, 0.32, 1)";
-      path.style.strokeDashoffset = 0;
-    });
-    const first = pts[0], lastV = pts[pts.length - 1];
-    const say = lastV > first ? `Up from ${first} in ${P.MON[+months[0].slice(5) - 1]}.` : lastV < first ? `Down from ${first} in ${P.MON[+months[0].slice(5) - 1]}.` : "Steady.";
-    return h("div", {}, svg, h("p", { class: "small muted", text: say }));
-  }
 
   // Tone: how your prompts open, counted by the same rules as the scorer (no AI guessing).
   function tonePanel() {
@@ -304,7 +355,7 @@
   P.views.analytics = function (root) {
     const st = P.D.stats, kw = P.D.keywords || {};
     root.append(head("Analytics", "Your numbers",
-      `Usage times, models and keywords, from ${P.niceDate(P.D.meta.first_day, true)} to ${P.niceDate(P.D.meta.last_day, true)}. Times are in ${P.D.meta.timezone}.`));
+      `Usage times, models, tokens and keywords, from ${P.niceDate(P.D.meta.first_day, true)} to ${P.niceDate(P.D.meta.last_day, true)}. Times are in ${P.D.meta.timezone}.`));
     const am = st.sessions.active_minutes || {};
     root.append(h("div", { class: "tiles" },
       countTile("Prompts", st.totals.prompts, `${(st.totals.prompts_by_kind.typed || 0).toLocaleString()} typed, the rest commands`),
@@ -335,6 +386,7 @@
         h("h3", { text: "Prompt length" }),
         P.bars(Object.entries(st.prompt_length.buckets).map(([name, value]) => ({ name: `${name} words`, value }))))));
 
+    root.append(...tokensSection());
     if (P.dayTimeline) root.append(P.dayTimeline());
     const setup = P.setupPanel && P.setupPanel();
     if (setup) root.append(P.fold(setup));

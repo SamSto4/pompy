@@ -18,7 +18,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pompy import __version__, compare, config, keywords, outcomes, score, stats
+from pompy import __version__, compare, config, keywords, outcomes, score, stats, tokens
 from pompy.working_set import WorkingSet, before, parse_period
 
 TEMPLATE_DIR = Path(__file__).parent / "dashboard"
@@ -362,6 +362,12 @@ def build_bundle(conn: sqlite3.Connection, tz=None, now: datetime | None = None)
     for r in rows:
         if r["u"] in neighbours:
             r["nb"] = neighbours[r["u"]]
+    # Exact token use per prompt, from the API's own numbers on each reply (pompy/tokens.py).
+    tk = tokens.compute(conn, tz)
+    per_prompt = tk.pop("per_prompt")
+    for r in rows:
+        if per_prompt.get(r["u"]):
+            r["tk"] = per_prompt[r["u"]]
 
     month = WorkingSet(window=parse_period("this-month", tz, now=now), tz=tz)
     try:
@@ -433,6 +439,7 @@ def build_bundle(conn: sqlite3.Connection, tz=None, now: datetime | None = None)
         "compare": cmp,
         "working_set": working_set,
         "rules": export_rules(),
+        "tokens": tk,
         "prompts": rows,
         "themes": themes,
         "learned": learned(conn, tz, now),

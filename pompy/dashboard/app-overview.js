@@ -107,7 +107,7 @@
   function detail(r) {
     const has = new Set(r.f);
     const parts = h("div", { class: "checks" }, P.D.rules.features.map((f) => h("span", { class: has.has(f.name) ? "yes" : "no", text: f.label })));
-    const out = [h("div", { class: "full", text: r.t }), h("div", { class: "small muted", text: `Prompt Score ${P.tenText(r.f.length)}/10: has ${r.f.length} of the 7 checks` }), parts];
+    const out = [h("div", { class: "full", text: r.t }), h("div", { class: "small muted", text: `Prompt Score ${P.tenText(r.f.length)}/10: has ${r.f.length} of the 7 checks${r.tk ? ` · used ${P.fmtTok ? P.fmtTok(r.tk) : r.tk} tokens` : ""}` }), parts];
     if (r.c) {
       out.push(h("h3", { text: "Why it went wrong" }), h("ol", { class: "steps" }, r.c.map((x) => h("li", { text: x }))));
       if (r.rp) out.push(h("div", { class: "small muted", text: "Claude replied" }), h("div", { class: "quote", text: r.rp }));

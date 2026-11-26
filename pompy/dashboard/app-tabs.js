@@ -237,7 +237,8 @@
   }
 
   function detail(r) {
-    const box = h("div", { class: "detail" }, h("div", { class: "full", text: r.t }));
+    const box = h("div", { class: "detail" }, h("div", { class: "full", text: r.t }),
+      r.tk ? h("p", { class: "small muted", text: `This prompt used ${P.fmtTok(r.tk)} tokens, every reply and tool call included.` }) : null);
     if (r.q) box.append(h("p", { class: "small" }, h("b", { text: "Claude had to ask: " }), r.q));
     const like = (r.nb || []).map((u) => P.byId.get(u)).filter(Boolean);
     if (like.length) {
