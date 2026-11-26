@@ -110,8 +110,11 @@
     const bars = h("div", { class: "recent-scores", role: "img", "aria-label": `Your last ${lastN.length} Prompt Scores` },
       lastN.map((r, i) => h("i", { class: P.band(r.s), title: `${P.when(r)}: ${P.tenText(r.s)}/10`, style: `height:${Math.max(6, (100 * r.s) / 7)}%;animation-delay:${i * 25}ms` })));
     root.append(h("div", { class: "grid2" },
-      P.panel("Every prompt", `your last ${lastN.length}, oldest on the left`, quip(rows), bars,
+      h("div", { class: "panel" },
+        h("div", { class: "panel-head quip-head" }, h("h2", { text: "Every prompt" }), quip(rows)),
+        bars,
         h("div", { class: "chips small" },
+          h("span", { class: "muted", text: `Your last ${lastN.length}, oldest on the left:` }),
           h("span", { class: "legend" }, h("i", { class: "dot sq", style: "background:var(--accent)" }), "clear (5.7+)"),
           h("span", { class: "legend" }, h("i", { class: "dot sq", style: "background:var(--primary)" }), "okay"),
           h("span", { class: "legend" }, h("i", { class: "dot sq", style: "background:var(--danger)" }), "vague (under 2.9)"))),
