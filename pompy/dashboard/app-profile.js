@@ -119,7 +119,7 @@
 
     // The factors, like the deck: how often each check shows up in your prompts.
     const feats = P.D.rules.features.map((f) => ({ f, pct: ((sc.features || {})[f.name] || {}).present_pct ?? 0 }));
-    root.append(P.panel("What your score is made of", "share of your task prompts with each check",
+    root.append(P.panel("What your score is made of", factorLine(feats),
       h("div", { class: "factors" }, feats.map(({ f, pct }) =>
         h("div", { class: "factor", title: f.tip },
           h("span", { text: f.label }),
@@ -157,6 +157,21 @@
       text.textContent = pool[i];
     });
     return btn;
+  }
+
+  // The factor panel's corner line: your strongest check and the one you skip most, with a wink.
+  function factorLine(feats) {
+    if (!feats.length) return "";
+    const sorted = [...feats].sort((a, b) => b.pct - a.pct);
+    const best = sorted[0], worst = sorted[sorted.length - 1];
+    const B = best.f.label.toLowerCase(), W = worst.f.label.toLowerCase();
+    const lines = [
+      `${best.f.label} is your superpower. ${worst.f.label} is your plot twist.`,
+      `You nail ${B}. Claude is still waiting on ${W}.`,
+      `Strong on ${B}, shy on ${W}.`,
+      `${Math.round(best.pct)}% ${B}, ${Math.round(worst.pct)}% ${W}. One of these needs a hug.`,
+    ];
+    return lines[scored().length % lines.length];
   }
 
   function missingLine(r) {
