@@ -77,33 +77,12 @@
   // ── My profile: the Prompt Score ──────────────────────────────────────────
   P.views.profile = function (root) {
     const rows = scored();
-    const last = rows[rows.length - 1];
     const recent = rows.filter((r) => r.d > daysAgo(30));
     const all10 = tenOf(avg(rows)), recent10 = tenOf(avg(recent));
     const sc = P.D.score || {};
-    root.append(head("My profile", "Your Prompt Score",
-      "Every task prompt gets a score out of 10 from 7 checks. Your average combines them all. Replies like \"ok go\" and routine commands aren't scored."));
-
-    // Latest and average, side by side.
-    const latest = h("div", { class: "panel" },
-      h("div", { class: "panel-head" }, h("span", { class: "eyebrow", text: "Latest prompt" }), last ? h("span", { class: "small muted", text: P.when(last) }) : null),
-      last
-        ? h("div", { class: "score-card" }, P.ring(P.ten(last.s), { band: P.band(last.s), label: "out of 10" }),
-            h("div", { style: "display:flex;flex-direction:column;gap:8px" },
-              h("span", { class: "score-word " + P.band(last.s), text: P.bandWord(last.s) }),
-              h("p", { class: "small", style: "display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere", text: last.t }),
-              missingLine(last)))
-        : h("p", { class: "muted", text: "No scored prompts yet." }));
-    const average = h("div", { class: "panel" },
-      h("div", { class: "panel-head" }, h("span", { class: "eyebrow", text: "Your average" }), h("span", { class: "small muted", text: `${rows.length.toLocaleString()} prompts` })),
-      h("div", { class: "score-card" }, P.ring(all10, { band: bandOf10(all10), label: "all-time" }),
-        h("div", { style: "display:flex;flex-direction:column;gap:8px" },
-          h("span", { class: "score-word " + bandOf10(all10), text: wordOf10(all10) }),
-          recent10 != null
-            ? h("p", { class: "small" }, "Last 30 days: ", h("b", { text: `${recent10}/10` }), deltaSpan(recent10, all10), h("span", { class: "muted", text: ` · ${recent.length} prompts` }))
-            : h("p", { class: "small muted", text: "No prompts in the last 30 days." }),
-          h("p", { class: "small muted", text: `Snapshot from ${P.niceDate(P.D.meta.today, true)}. The notch and side panel update after every prompt.` }))));
-    root.append(h("div", { class: "profile-top" }, latest, average));
+    // Like a social profile: who you are as a prompter, then your feed of prompts.
+    root.append(profileHeader(rows, all10, recent10, recent.length));
+    root.append(feedPanel(rows));
 
     // Last 24 prompts as bars, then the monthly trend.
     const lastN = rows.slice(-24);
@@ -130,9 +109,130 @@
           h("span", { class: "w " + factorWord(pct), text: `${factorWord(pct)} · ${Math.round(pct)}%` })))),
       h("p", { class: "small muted", text: "Each check is one point of 7, scaled to 10. The rubric itself hasn't changed." })));
 
-    root.append(h("div", { class: "grid2" }, tonePanel(), improvePanel()));
+    root.append(h("div", { class: "grid2" }, toneBubbles(), improvePanel()));
     root.append(projectsMini());
   };
+
+  // ── Your prompt sign: a zodiac-style read of how you prompt ─────────────
+  // Counted by rules, not guessed: your sun sign is how you most often open a prompt, your rising
+  // sign the next most common, and your moon the check you include most. For fun, from real data.
+  const SIGNS = {
+    commander: { name: "The Commander", glyph: "▲", line: "You lead with the verb. Claude knows who's in charge.", gift: "Fast, decisive asks", watch: "Commands skip the why" },
+    sprinter: { name: "The Sprinter", glyph: "⚡", line: "Short, quick, gone. You prompt at the speed of thought.", gift: "Momentum", watch: "Claude fills in the blanks" },
+    explorer: { name: "The Explorer", glyph: "✦", line: "You think out loud and follow the question.", gift: "Curiosity", watch: "Questions rarely say what 'done' is" },
+    diplomat: { name: "The Diplomat", glyph: "❋", line: "Polite, collaborative, a pleasure to work with.", gift: "Clear asks", watch: "Kind words can hide a vague goal" },
+    storyteller: { name: "The Storyteller", glyph: "☾", line: "You set the scene and let Claude find the plot.", gift: "Rich context", watch: "The actual ask can get lost" },
+    architect: { name: "The Architect", glyph: "◆", line: "Context, limits, a plan. You hand Claude a blueprint.", gift: "Structure", watch: "Can over-specify small things" },
+  };
+  const STYLE_SIGN = { command: "commander", request: "diplomat", question: "explorer", statement: "storyteller" };
+  function promptSign() {
+    const os = (P.D.keywords || {}).opening_style || {};
+    const order = ["command", "request", "question", "statement"].filter((k) => os[k]).sort((a, b) => os[b] - os[a]);
+    const words = ((P.D.stats.prompt_length || {}).words || {}).median ?? 20;
+    const fp = (n) => (((P.D.score || {}).features || {})[n] || {}).present_pct ?? 0;
+    const pick = (style) => (style === "command" && words <= 8 ? "sprinter" : STYLE_SIGN[style]);
+    let sun = order.length ? pick(order[0]) : "explorer";
+    if ((fp("context") + fp("constraints")) / 2 >= 40) sun = "architect";
+    const rising = order[1] ? pick(order[1]) : null;
+    const feats = P.D.rules.features.map((f) => [f, fp(f.name)]).sort((a, b) => b[1] - a[1]);
+    return { sun: SIGNS[sun], rising: rising && rising !== sun ? SIGNS[rising] : null, moon: feats[0] && feats[0][0], weak: feats[feats.length - 1] && feats[feats.length - 1][0] };
+  }
+  // Days in a row, ending on your last active day, with at least one clear prompt (5.7+).
+  // Also your best run ever, shown when the current one is 0.
+  function clearStreak(rows) {
+    const days = new Set(rows.filter((r) => r.s >= 4).map((r) => r.d));
+    let now = 0;
+    const d = new Date(P.D.meta.last_day + "T12:00:00Z");
+    while (days.has(d.toISOString().slice(0, 10))) { now++; d.setUTCDate(d.getUTCDate() - 1); }
+    let best = 0, run = 0, prev = null;
+    for (const day of [...days].sort()) {
+      const t = Date.parse(day + "T12:00:00Z");
+      run = prev != null && t - prev === 86400000 ? run + 1 : 1;
+      best = Math.max(best, run); prev = t;
+    }
+    return { now, best };
+  }
+  function profileHeader(rows, all10, recent10, recentN) {
+    const sg = promptSign();
+    const st = P.D.stats;
+    const stat = (n, label) => { const v = h("b", {}); P.countUp(v, n); return h("div", { class: "pstat" }, v, h("span", { text: label })); };
+    return h("section", { class: "phead panel" },
+      h("div", { class: "phead-main" },
+        h("div", { class: "avatar", "aria-hidden": "true" }, h("span", { text: sg.sun.glyph })),
+        h("div", { class: "phead-id" },
+          h("span", { class: "eyebrow", text: "My profile · your prompt sign" }),
+          h("h1", { text: sg.sun.name }),
+          h("p", { class: "lede", text: sg.sun.line }),
+          h("div", { class: "chips" },
+            h("span", { class: "chip lime", text: `Sun ${sg.sun.glyph} ${sg.sun.name.replace("The ", "")}` }),
+            sg.rising ? h("span", { class: "chip", text: `Rising ${sg.rising.glyph} ${sg.rising.name.replace("The ", "")}` }) : null,
+            sg.moon ? h("span", { class: "chip", text: `Moon ☽ ${sg.moon.label}` }) : null)),
+        h("div", { class: "phead-score" }, P.ring(all10, { band: bandOf10(all10), label: "Prompt Score", size: 132 }),
+          h("span", { class: "small muted", text: recent10 != null ? `${recent10}/10 over your last ${recentN} (30 days)` : "your average" }))),
+      h("div", { class: "pstats" },
+        stat(rows.length, "scored prompts"),
+        stat(st.sessions.with_prompts || st.totals.sessions, "chats"),
+        stat(st.totals.projects, "projects"),
+        (() => { const k = clearStreak(rows); return k.now ? stat(k.now, "day clear streak") : stat(k.best, "best clear streak (days)"); })()),
+      h("div", { class: "traits" },
+        h("div", {}, h("span", { class: "eyebrow", text: "Your gift" }), h("b", { text: sg.sun.gift })),
+        h("div", {}, h("span", { class: "eyebrow", text: "Watch out for" }), h("b", { text: sg.sun.watch })),
+        sg.weak ? h("div", {}, h("span", { class: "eyebrow", text: "Your next move" }), h("b", { text: `Add ${sg.weak.label.toLowerCase()}` })) : null),
+      h("p", { class: "small muted", text: "Your sign comes from how your prompts open (sun, then rising) and the check you include most (moon). Counted by rules from your chats, just for fun." }));
+  }
+
+  // Your feed: your latest prompts, newest first, each with its score and what it was missing.
+  function feedPanel(rows) {
+    let limit = 4;
+    const list = h("div", { class: "feed" });
+    const more = h("button", { class: "btn", type: "button", text: "Show more" });
+    const draw = () => {
+      list.textContent = "";
+      rows.slice(-limit).reverse().forEach((r, i) => {
+        const has = new Set(r.f);
+        const miss = P.D.rules.features.filter((f) => !has.has(f.name)).slice(0, 3);
+        list.append(h("article", { class: "post lift", style: `animation-delay:${i * 50}ms` },
+          h("div", { class: "post-score " + P.band(r.s) }, h("b", { text: P.tenText(r.s) }), h("span", { text: "/10" })),
+          h("div", { class: "post-body" },
+            h("div", { class: "post-meta" }, h("b", { text: project(r.p) }), h("span", { class: "muted", text: ` · ${P.when(r)}` }), r.tk ? h("span", { class: "muted", text: ` · ${P.fmtTok(r.tk)} tokens` }) : null),
+            h("p", { class: "post-text", text: r.t }),
+            miss.length ? h("div", { class: "chips small" }, miss.map((f) => h("span", { class: "chip", text: `+ ${f.label.toLowerCase()}` }))) : h("span", { class: "chip ok", text: "Every check" }),
+            h("div", { class: "controls" }, h("button", { class: "linkish", type: "button", text: "Write a better version", onclick: () => { P.prefill = r.t; location.hash = "write"; } })))));
+      });
+      more.classList.toggle("hidden", rows.length <= limit);
+    };
+    more.addEventListener("click", () => { limit += 6; draw(); });
+    draw();
+    return h("div", { class: "panel" },
+      h("div", { class: "panel-head" }, h("h2", { text: "Your feed" }), h("span", { class: "small muted", text: "your latest prompts, newest first" })),
+      list, h("div", {}, more));
+  }
+
+  // Tone as bubbles: the biggest is how you most often open a prompt. Hover one to read it.
+  function toneBubbles() {
+    const os = (P.D.keywords || {}).opening_style || {};
+    const kinds = [["command", "Commands", "var(--primary)", "You tell Claude what to do."], ["request", "Requests", "var(--accent)", "You ask nicely: can you, please."], ["question", "Questions", "var(--success)", "You ask and think out loud."], ["statement", "Statements", "var(--ink-muted)", "You describe and let Claude decide."]]
+      .filter(([k]) => os[k]).sort((a, b) => os[b[0]] - os[a[0]]);
+    const total = kinds.reduce((t, [k]) => t + os[k], 0);
+    if (!total) return P.panel("Your tone", null, h("p", { class: "muted", text: "Not enough prompts yet." }));
+    // Area ∝ count. The biggest sits centre-left; the rest orbit it.
+    const maxR = 92;
+    const r = (n) => Math.max(26, maxR * Math.sqrt(n / os[kinds[0][0]]));
+    const spots = [[38, 50], [76, 28], [78, 74], [52, 88]];
+    const field = h("div", { class: "bubbles", role: "list", "aria-label": "How your prompts open" },
+      kinds.map(([k, label, color, what], i) => {
+        const rad = r(os[k]), pct = Math.round((100 * os[k]) / total);
+        const textInk = k === "request" ? "var(--on-accent)" : k === "statement" ? "var(--surface)" : "var(--on-primary)";
+        return h("div", { class: "bubble", role: "listitem", tabindex: 0, title: `${label}: ${os[k]} prompts. ${what}`,
+          style: `width:${rad * 2}px;height:${rad * 2}px;left:calc(${spots[i][0]}% - ${rad}px);top:calc(${spots[i][1]}% - ${rad}px);background:${color};color:${textInk};animation-delay:${i * -1.3}s` },
+          h("b", { text: `${pct}%` }), h("span", { text: label }), h("em", { text: what }));
+      }));
+    const top = kinds[0];
+    return P.panel("Your tone", "how your prompts open",
+      h("p", { class: "big-line" }, "Mostly ", h("b", { class: "tone-word", text: top[1].toLowerCase() }), "."),
+      field,
+      h("p", { class: "small muted", text: "Bubble size is how often you open a prompt that way. Hover or tab to one to see what it means." }));
+  }
 
   // A little line that changes with how clear your last few prompts were. Picked from your last 5
   // scores (and whether they beat the 5 before), so it moves as you send prompts. Tap to get another.
@@ -357,50 +457,8 @@
     return lines[scored().length % lines.length];
   }
 
-  function missingLine(r) {
-    const has = new Set(r.f);
-    const miss = P.D.rules.features.filter((f) => !has.has(f.name)).slice(0, 2);
-    if (!miss.length) return h("p", { class: "small better", text: "Every check is there." });
-    return h("p", { class: "small" }, h("span", { class: "muted", text: "Next time add " }), h("b", { text: miss.map((f) => f.label.toLowerCase()).join(" and ") }), ".");
-  }
-  function deltaSpan(a, b) {
-    const d = Math.round((a - b) * 10) / 10;
-    if (!d) return h("span", { class: "muted", text: " · same as usual" });
-    return h("span", { class: d > 0 ? "better" : "worse", text: d > 0 ? ` ▲ ${d}` : ` ▼ ${-d}` });
-  }
 
 
-  // Tone: how your prompts open, counted by the same rules as the scorer (no AI guessing).
-  function tonePanel() {
-    const kw = P.D.keywords || {};
-    const os = kw.opening_style || {};
-    const order = [["command", "Commands", "var(--primary)"], ["request", "Requests", "var(--accent)"], ["question", "Questions", "var(--success)"], ["statement", "Statements", "var(--ink-muted)"]];
-    const total = order.reduce((t, [k]) => t + (os[k] || 0), 0);
-    if (!total) return P.panel("Your tone", null, h("p", { class: "muted", text: "Not enough prompts yet." }));
-    const top = [...order].sort((a, b) => (os[b[0]] || 0) - (os[a[0]] || 0))[0];
-    const words = (P.D.stats.prompt_length || {}).words || {};
-    const sm = kw.style_markers || {};
-    const typed = P.D.stats.totals.prompts_by_kind.typed || 1;
-    const polite = Math.round((100 * ((sm.please || 0) + (sm.thanks || 0))) / typed);
-    const firm = Math.round((100 * ((sm["don't / never (constraint)"] || 0) + (sm["must / should"] || 0))) / typed);
-    const desc = {
-      command: "You mostly give direct instructions.",
-      request: "You mostly ask politely for what you want.",
-      question: "You mostly ask questions and think out loud.",
-      statement: "You mostly describe the situation and let Claude decide.",
-    }[top[0]];
-    return P.panel("Your tone", "how your prompts open",
-      h("p", { class: "big-line", text: desc }),
-      h("div", { class: "tone", role: "img", "aria-label": order.map(([k, l]) => `${l}: ${os[k] || 0}`).join(", ") },
-        order.filter(([k]) => os[k]).map(([k, l, c]) => h("div", { title: `${l}: ${os[k]}`, style: `flex:${os[k]};background:${c}` }))),
-      h("div", { class: "chips small" }, order.map(([k, l, c]) =>
-        h("span", { class: "legend" }, h("i", { class: "dot sq", style: `background:${c}` }), `${l} ${Math.round((100 * (os[k] || 0)) / total)}%`))),
-      h("ul", { class: "small", style: "margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:4px" },
-        words.median != null ? h("li", { text: `Your typical prompt is ${words.median} words; the longest tenth run past ${words.p90}.` }) : null,
-        h("li", { text: `"Please" or "thanks" shows up in ${polite}% of your prompts.` }),
-        h("li", { text: `Firm limits ("don't", "must", "should") show up in ${firm}%.` })),
-      h("p", { class: "small muted", text: "Counted by rules from how each prompt starts. It describes your wording, not you." }));
-  }
 
   function improvePanel() {
     const hs = P.D.habits || [];
