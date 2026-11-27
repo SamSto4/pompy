@@ -467,7 +467,65 @@
       h("ol", { class: "steps", style: "gap:12px" }, hs.map((hb) => h("li", {},
         h("b", { text: `Add ${hb.label.toLowerCase()}. ` }), h("span", { class: "muted", text: hb.tip }),
         h("div", { class: "small muted", text: `In ${hb.present_pct}% of your task prompts${hb.this_month != null && hb.before != null ? `; ${hb.this_month}% this month vs ${hb.before}% before` : ""}.` })))),
+      h("button", { class: "gallery-cta lift", type: "button", onclick: (e) => openGallery(e.currentTarget) },
+        h("span", { class: "gallery-icon", "aria-hidden": "true", text: "✦" }),
+        h("span", {}, h("b", { text: "See what a great prompt looks like" }), h("span", { class: "small muted", text: "Three 10/10 examples, every part labelled" }))),
       h("div", { class: "controls" }, h("a", { class: "btn", href: "#insights", text: "Practice with your own prompts" })));
+  }
+
+  // ── The prompt gallery: made-up 10/10 prompts with each of the 7 checks coloured in ──
+  const CHECK_COLOR = { goal: "#2b5cff", context: "#0b7f57", constraints: "#d13438", done: "#8a5cf6", format: "#c2410c", example: "#0e7490", reference: "#a16207" };
+  const GALLERY = [
+    { title: "Fix a bug", parts: [["Fix the password reset on the web login", "goal"], [", "], ["because people land on a blank page after they reset", "context"], [". "], ["Look at `src/auth/reset.ts`", "reference"], [". "], ["Don't change the API", "constraints"], [". "], ["Show an error message like the sign-up page does", "example"], [". "], ["Done when the reset-then-login test passes", "done"], [". "], ["Reply with a short summary and the diff", "format"], ["."]] },
+    { title: "Build a feature", parts: [["Add a dark mode toggle to the settings page", "goal"], [" "], ["so night users can read without glare", "context"], [". "], ["Use the colours in `src/styles/theme.css`", "reference"], [" "], ["and don't add a new library", "constraints"], [". "], ["It should look like the toggle on the notifications page", "example"], [". "], ["It works when the choice survives a reload", "done"], [". "], ["Keep the answer short: code only", "format"], ["."]] },
+    { title: "Ask a question", parts: [["Compare Postgres and SQLite for my notes app", "goal"], [". "], ["I'm a solo developer on a Mac with at most 10k notes", "context"], [", "], ["see `docs/ARCHITECTURE.md`", "reference"], [". "], ["Only consider options that run without a server", "constraints"], [". "], ["For example, how backups and migrations work", "example"], [". "], ["Answer as a table", "format"], [", and "], ["the result should end with a one-line recommendation", "done"], ["."]] },
+  ];
+  function galleryCard(ex) {
+    const text = ex.parts.map(([t]) => t).join("");
+    const r = P.S.scoreText(text, false, false);
+    const used = new Set(ex.parts.map(([, k]) => k).filter(Boolean));
+    return h("div", { class: "gallery-card pop" },
+      h("div", { class: "controls spread" }, h("h3", { text: ex.title }), r.score != null ? P.scorePill({ s: r.score }) : null),
+      h("p", { class: "gallery-text" }, ex.parts.map(([t, k]) => k
+        ? h("mark", { style: `--c:${CHECK_COLOR[k]}`, title: P.FEAT[k] ? P.FEAT[k].label : k, tabindex: 0 }, t, h("sup", { text: (P.FEAT[k] ? P.FEAT[k].label : k).toLowerCase() }))
+        : t)),
+      h("div", { class: "gallery-key" }, P.D.rules.features.filter((f) => used.has(f.name)).map((f) =>
+        h("div", {}, h("i", { style: `background:${CHECK_COLOR[f.name]}` }), h("b", { text: f.label }), h("span", { class: "small muted", text: f.tip })))),
+      h("div", { class: "controls" },
+        h("button", { class: "btn", type: "button", text: "Use as a template", onclick: () => { P.prefill = text; location.hash = "write"; document.querySelector("dialog.gallery")?.close(); } })));
+  }
+  function openGallery(from) {
+    const close = h("button", { class: "icon-btn", type: "button", "aria-label": "Close", text: "✕" });
+    const stage = h("div", {});
+    const tabs = h("div", { class: "seg-tabs", role: "tablist" });
+    // Your own best: your highest-scoring prompt that Claude got right first time, if any.
+    const best = scored().filter((r) => r.v === "useful").sort((a, b) => b.s - a.s || (b.d + b.hh).localeCompare(a.d + a.hh))[0];
+    const items = [...GALLERY.map((ex) => ["ex", ex.title, () => galleryCard(ex)]),
+      best ? ["you", "Your best", () => h("div", { class: "gallery-card pop" },
+        h("div", { class: "controls spread" }, h("h3", { text: "Your best prompt so far" }), P.scorePill(best)),
+        h("p", { class: "gallery-text", text: best.t }),
+        h("div", { class: "chips small" }, P.D.rules.features.map((f) => h("span", { class: best.f.includes(f.name) ? "chip lime" : "chip", text: (best.f.includes(f.name) ? "✓ " : "+ ") + f.label.toLowerCase() }))),
+        h("p", { class: "small muted", text: `${P.when(best)} · ${project(best.p)}. Claude got this one right first time. The checks without a tick are what would make it a 10.` }))] : null].filter(Boolean);
+    const show = (i) => {
+      [...tabs.children].forEach((b, j) => b.setAttribute("aria-selected", String(i === j)));
+      stage.textContent = ""; stage.append(items[i][2]());
+    };
+    items.forEach(([, label], i) => tabs.append(h("button", { class: "seg-tab", role: "tab", type: "button", text: label, onclick: () => show(i) })));
+    const dlg = h("dialog", { class: "roadmap gallery", "aria-labelledby": "gallery-title" },
+      h("div", { class: "panel-head" },
+        h("div", {}, h("span", { class: "eyebrow", text: "Prompt gallery" }), h("h2", { id: "gallery-title", text: "What a 10/10 prompt looks like" })), close),
+      h("p", { class: "small muted", text: "Made-up examples. Each coloured part is one of the 7 checks; hover a part to see which. Not every prompt needs all 7, but your misses usually lack the same few." }),
+      tabs, stage);
+    const done = () => { dlg.remove(); if (from && from.focus) from.focus(); };
+    close.addEventListener("click", () => dlg.close());
+    dlg.addEventListener("close", done);
+    dlg.addEventListener("click", (e) => {
+      const r = dlg.getBoundingClientRect();
+      if (e.target === dlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dlg.close();
+    });
+    document.body.append(dlg);
+    show(0);
+    dlg.showModal();
   }
 
   function projectsMini() {
