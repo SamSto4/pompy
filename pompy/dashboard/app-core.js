@@ -241,7 +241,7 @@
       if (current) window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
       current = name;
     }
-    if (built[name]) return;
+    if (built[name]) { P.reveal(root); return; }
     built[name] = true;
     for (const [part, title, mode] of TABS[name]) {
       if (!P.views[part]) continue;
@@ -251,7 +251,37 @@
       if (mode === "fold") root.append(h("details", { class: "panel fold" }, h("summary", { class: "panel-head" }, h("h2", { text: title })), box));
       else root.append(h("h2", { class: "section-title", text: title }), box);
     }
+    P.reveal(root);
   }
+
+  // Panels below the fold rise in as you scroll to them (once per visit). Everything stays
+  // visible without JavaScript, without IntersectionObserver, and with reduced motion.
+  let io = null;
+  P.reveal = function (root) {
+    if (P.calm() || !("IntersectionObserver" in window)) return;
+    io ??= new IntersectionObserver((entries) => entries.forEach((en) => {
+      if (!en.isIntersecting) return;
+      en.target.classList.remove("await");
+      en.target.classList.add("revealed");
+      io.unobserve(en.target);
+    }), { rootMargin: "0px 0px -60px 0px" });
+    const fold = window.innerHeight;
+    // Safety net: if the observer never fires, a scroll (or 3 s) still shows everything.
+    if (!P._revealNet) {
+      P._revealNet = true;
+      const sweep = () => document.querySelectorAll(".await").forEach((el) => {
+        if (el.getBoundingClientRect().top < window.innerHeight) { el.classList.remove("await"); el.classList.add("revealed"); }
+      });
+      window.addEventListener("scroll", () => requestAnimationFrame(sweep), { passive: true });
+    }
+    setTimeout(() => root.querySelectorAll(":scope > .await").forEach((el) => {
+      if (el.getBoundingClientRect().top < window.innerHeight) { el.classList.remove("await"); el.classList.add("revealed"); }
+    }), 3000);
+    [...root.children].forEach((el) => {
+      el.classList.remove("revealed");
+      if (el.getBoundingClientRect().top > fold) { el.classList.add("await"); io.observe(el); }
+    });
+  };
 
   // The nav's cobalt pill slides under the current tab.
   function moveIndicator() {
@@ -276,6 +306,7 @@
       const dark = getComputedStyle(document.documentElement).colorScheme.includes("dark");
       const next = dark ? "light" : "dark";
       document.documentElement.dataset.theme = next;
+      btn.classList.remove("spin"); void btn.offsetWidth; btn.classList.add("spin");
       try { localStorage.setItem("pompy-theme", next); } catch (e) {}
     });
   }

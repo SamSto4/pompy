@@ -156,9 +156,9 @@
     const sg = promptSign();
     const st = P.D.stats;
     const stat = (n, label) => { const v = h("b", {}); P.countUp(v, n); return h("div", { class: "pstat" }, v, h("span", { text: label })); };
-    return h("section", { class: "phead panel" },
+    const card = h("section", { class: "phead panel" },
       h("div", { class: "phead-main" },
-        h("div", { class: "avatar", "aria-hidden": "true" }, h("span", { text: sg.sun.glyph })),
+        h("div", { class: "avatar", "aria-hidden": "true" }, h("i", { class: "orbit" }), h("span", { text: sg.sun.glyph })),
         h("div", { class: "phead-id" },
           h("span", { class: "eyebrow", text: "My profile · your prompt sign" }),
           h("h1", { text: sg.sun.name }),
@@ -179,6 +179,15 @@
         h("div", {}, h("span", { class: "eyebrow", text: "Watch out for" }), h("b", { text: sg.sun.watch })),
         sg.weak ? h("div", {}, h("span", { class: "eyebrow", text: "Your next move" }), h("b", { text: `Add ${sg.weak.label.toLowerCase()}` })) : null),
       h("p", { class: "small muted", text: "Your sign comes from how your prompts open (sun, then rising) and the check you include most (moon). Counted by rules from your chats, just for fun." }));
+    // A soft light follows your pointer across the card (fine pointers only; decorative).
+    if (matchMedia("(hover: hover) and (pointer: fine)").matches && !P.calm()) {
+      card.addEventListener("pointermove", (e) => {
+        const r = card.getBoundingClientRect();
+        card.style.setProperty("--mx", `${e.clientX - r.left}px`);
+        card.style.setProperty("--my", `${e.clientY - r.top}px`);
+      });
+    }
+    return card;
   }
 
   // Your feed: your latest prompts, newest first, each with its score and what it was missing.
@@ -637,6 +646,29 @@
   ];
   const sentence = (t) => { t = t.trim().replace(/\s+/g, " "); if (!t) return ""; t = t[0].toUpperCase() + t.slice(1); return /[.!?]$/.test(t) ? t : t + "."; };
 
+  // A 10/10 plan earns a small burst of Volt confetti. Rare by design: only on the step up to 10.
+  const CHECKS_ALL = () => P.D.rules.features.length;
+  function celebrate(near) {
+    if (P.calm()) return;
+    const box = near.getBoundingClientRect();
+    const burst = h("div", { class: "burst", "aria-hidden": "true", style: `left:${box.left + 56}px;top:${box.top + 56}px` });
+    const colors = ["var(--accent)", "var(--primary)", "var(--success)"];
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2, d = 60 + (i % 3) * 22;
+      burst.append(h("i", { style: `--x:${Math.cos(a) * d}px;--y:${Math.sin(a) * d}px;--r:${i * 40}deg;background:${colors[i % 3]};animation-delay:${(i % 4) * 20}ms` }));
+    }
+    document.body.append(burst);
+    setTimeout(() => burst.remove(), 1100);
+    P.toast && P.toast("10/10. Every check is there.");
+  }
+  // A small message that rises from the bottom and leaves the same way.
+  P.toast = function (text) {
+    const t = h("div", { class: "toast", role: "status", text });
+    document.body.append(t);
+    setTimeout(() => t.classList.add("out"), 2200);
+    setTimeout(() => t.remove(), 2600);
+  };
+
   P.views.plan = function (root) {
     root.append(head("Plan & write", "Plan before you send",
       "Good planning matters as much as the task. Think it through here, one check at a time, then send the draft to step 2 to polish it."));
@@ -659,6 +691,7 @@
       const r = text ? P.S.scoreText(text, false, false) : null;
       const score = r && r.score != null ? r.score : null;
       if (score !== lastScore) {
+        if (score === CHECKS_ALL() && lastScore != null && lastScore < score) celebrate(ringBox);
         lastScore = score;
         ringBox.textContent = "";
         ringBox.append(h("div", { class: "score-card" }, P.ring(score == null ? null : P.ten(score), { size: 112, band: P.band(score), label: "out of 10" }),
