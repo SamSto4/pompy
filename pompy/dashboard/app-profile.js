@@ -192,14 +192,114 @@
     else P.countUp(big, tt / 1e6, { decimals: 1, suffix: "M" });
     const line = longChatLine();
     return h("div", { class: "panel" },
-      h("div", { class: "panel-head" }, h("h2", { text: "Your tokens" }), h("a", { class: "small", href: "#analytics", text: "See where they went →" })),
-      h("div", { class: "tok-row" },
+      h("div", { class: "panel-head" }, h("h2", { text: "Your tokens" }),
+        h("button", { class: "btn primary", type: "button", text: "Open token roadmap", onclick: (e) => openRoadmap(e.currentTarget) })),
+      h("div", { class: "tok-row", role: "button", tabindex: 0, "aria-label": "Open token roadmap", style: "cursor:pointer",
+        onclick: (e) => openRoadmap(e.currentTarget), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openRoadmap(e.currentTarget); } } },
         h("div", { class: "tile" }, h("div", { class: "label", text: "All time" }), big, h("div", { class: "sub", text: `${t.reread_pct}% was Claude re-reading the chat` })),
         h("div", { class: "tile" }, h("div", { class: "label", text: "This week" }), h("div", { class: "value", text: P.fmtTok(wk) }),
           h("div", { class: "sub" }, prev ? h("span", { class: wk <= prev ? "better" : "worse", text: wk <= prev ? `▼ ${Math.round(100 - (100 * wk) / prev)}% vs last week` : `▲ ${Math.round((100 * wk) / prev - 100)}% vs last week` }) : "no data last week")),
         h("div", { class: "tile" }, h("div", { class: "label", text: "Per prompt" }), h("div", { class: "value", text: P.fmtTok(per) }), h("div", { class: "sub", text: "typical prompt, all replies included" }))),
       line ? h("p", { class: "note", text: line }) : null);
   }
+  // ── Token roadmap: a pop-up that follows your tokens from the total to where they ended up ──
+  // All tokens → which project → what Claude did with them (re-reading the chat, saving new
+  // context, writing, new input). Ribbon widths are the real token counts.
+  const KINDS = [["cache_read", "Re-reading the chat", "var(--primary)"], ["cache_write", "Saving new context", "var(--accent)"], ["output", "Claude writing", "var(--success)"], ["input", "New input", "var(--ink-muted)"]];
+  function roadmapFlow(t) {
+    const tot = t.total.total || 1;
+    const projs = Object.entries(t.by_project);
+    const top = projs.slice(0, 5);
+    const rest = projs.slice(5);
+    if (rest.length) {
+      const o = { input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0 };
+      rest.forEach(([, v]) => Object.keys(o).forEach((k) => (o[k] += v[k] || 0)));
+      top.push([`${rest.length} other projects`, o]);
+    }
+    const W = 900, H = 380, NW = 14, GAP = 10, X0 = 20, X1 = 420, X2 = W - 20 - NW;
+    const usable = H - GAP * (top.length - 1);
+    const sc = (v) => (usable * v) / tot;
+    const svg = s("svg", { class: "flow", viewBox: `0 0 ${W} ${H + 24}`, role: "img",
+      "aria-label": `Your ${P.fmtTok(tot)} tokens by project and by what Claude did with them` });
+    // Left: all tokens.
+    svg.append(s("rect", { x: X0, y: 0, width: NW, height: H, rx: 4, fill: "var(--ink)" }));
+    svg.append(s("text", { x: X0, y: H + 18, class: "strong" }, `All tokens · ${P.fmtTok(tot)}`));
+    // Middle: projects; right: kinds.
+    let yL = 0, yM = 0;
+    const kindY = {}; let yR = 0;
+    const kindH = KINDS.map(([k]) => sc(t.total[k]));
+    const rGap = (H - kindH.reduce((a, b) => a + b, 0)) / Math.max(1, KINDS.length - 1);
+    KINDS.forEach(([k], i) => { kindY[k] = yR; yR += kindH[i] + rGap; });
+    const kindFill = { ...kindY };
+    const ribbon = (x0, y0, x1, y1, w, color, title, i) => {
+      const mx = (x0 + x1) / 2;
+      const d = `M${x0},${y0} C${mx},${y0} ${mx},${y1} ${x1},${y1} L${x1},${y1 + w} C${mx},${y1 + w} ${mx},${y0 + w} ${x0},${y0 + w} Z`;
+      return s("path", { class: "rib", d, fill: color, "fill-opacity": 0.28, style: `animation-delay:${i * 40}ms` }, s("title", {}, title));
+    };
+    let i = 0;
+    top.forEach(([name, v]) => {
+      const hgt = Math.max(1.5, sc(v.total));
+      svg.append(ribbon(X0 + NW, yL, X1, yM, hgt, "var(--primary)", `${project(name)}: ${P.fmtTok(v.total)} (${((100 * v.total) / tot).toFixed(1)}%)`, i++));
+      yL += hgt;
+      // This project's tokens split by kind, flowing right.
+      let yy = yM;
+      KINDS.forEach(([k, label, color]) => {
+        const w = sc(v[k] || 0);
+        if (w < 0.4) return;
+        svg.append(ribbon(X1 + NW, yy, X2, kindFill[k], w, color, `${project(name)} → ${label}: ${P.fmtTok(v[k])}`, i++));
+        yy += w; kindFill[k] += w;
+      });
+      svg.append(s("rect", { x: X1, y: yM, width: NW, height: hgt, rx: 3, fill: "var(--primary)" }));
+      if (hgt >= 14) svg.append(s("text", { x: X1 - 8, y: yM + hgt / 2 + 4, "text-anchor": "end", class: "strong" }, `${project(name).slice(0, 26)} · ${P.fmtTok(v.total)}`));
+      yM += hgt + GAP;
+    });
+    KINDS.forEach(([k, label, color], j) => {
+      if (kindH[j] < 0.5) return;
+      svg.append(s("rect", { x: X2, y: kindY[k], width: NW, height: Math.max(2, kindH[j]), rx: 3, fill: color }));
+      svg.append(s("text", { x: X2 - 8, y: kindY[k] + Math.max(2, kindH[j]) / 2 + 4, "text-anchor": "end", class: "strong" }, `${label} · ${((100 * t.total[k]) / tot).toFixed(1)}%`));
+    });
+    return svg;
+  }
+  function roadmapStops(t) {
+    const tot = t.total.total || 1;
+    const [topName, topV] = Object.entries(t.by_project)[0] || [];
+    const days = Object.entries(t.by_day).sort((a, b) => b[1].total - a[1].total);
+    const chat = t.top_chats[0];
+    const first = t.by_position[0], deep = [...t.by_position].reverse().find((x) => x.mean && x.prompts >= 5);
+    const stops = [
+      ["Start", `${P.fmtTok(tot)} tokens`, `Every reply Claude sent from ${P.niceDate(P.D.meta.first_day, true)} to ${P.niceDate(P.D.meta.last_day, true)}, ${t.replies.toLocaleString()} replies in all.`],
+      topName ? ["Most went to", project(topName), `${P.fmtTok(topV.total)}, or ${Math.round((100 * topV.total) / tot)}% of everything.`] : null,
+      ["Mostly spent on", "Re-reading the chat", `${t.reread_pct}%. Claude keeps no memory between replies, so each one re-sends the chat so far: that's the context window.`],
+      days[0] ? ["Biggest day", P.niceDate(days[0][0], true), `${P.fmtTok(days[0][1].total)} in one day.`] : null,
+      chat ? ["Costliest chat", chat.si ? `Chat ${chat.si} · ${project(chat.project)}` : `An agent run · ${project(chat.project)}`, `${P.fmtTok(chat.total)} over ${chat.prompts} prompts and ${chat.replies} replies.`] : null,
+      first && deep && deep !== first ? ["Where it adds up", `Prompts ${deep.label} in a chat`, `${P.fmtTok(deep.mean)} each, vs ${P.fmtTok(first.mean)} for the first five.`] : null,
+      ["Next stop", "Start fresh sooner", "After about 15 prompts, open a new chat with a 3-line summary. The next prompt re-reads a summary instead of the whole chat."],
+    ].filter(Boolean);
+    return h("ol", { class: "road" }, stops.map(([k, v, why], j) =>
+      h("li", { style: `animation-delay:${120 + j * 70}ms`, class: j === stops.length - 1 ? "goal" : "" },
+        h("span", { class: "eyebrow", text: k }), h("b", { text: v }), h("span", { class: "small muted", text: why }))));
+  }
+  function openRoadmap(from) {
+    const t = T(); if (!t) return;
+    const close = h("button", { class: "icon-btn", type: "button", "aria-label": "Close", text: "✕" });
+    const dlg = h("dialog", { class: "roadmap", "aria-labelledby": "roadmap-title" },
+      h("div", { class: "panel-head" },
+        h("div", {}, h("span", { class: "eyebrow", text: "Token roadmap" }), h("h2", { id: "roadmap-title", text: "Where your tokens went" })), close),
+      h("div", { class: "chart-scroll" }, roadmapFlow(t)),
+      h("div", { class: "chips small" }, KINDS.map(([k, l, c]) => h("span", { class: "legend" }, h("i", { class: "dot sq", style: `background:${c}` }), l))),
+      roadmapStops(t),
+      h("div", { class: "controls" }, h("a", { class: "btn", href: "#analytics", text: "All token details", onclick: () => dlg.close() })));
+    const done = () => { dlg.remove(); if (from && from.focus) from.focus(); };
+    close.addEventListener("click", () => dlg.close());
+    dlg.addEventListener("close", done);
+    dlg.addEventListener("click", (e) => { // a click on the dimmed backdrop closes it
+      const r = dlg.getBoundingClientRect();
+      if (e.target === dlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) dlg.close();
+    });
+    document.body.append(dlg);
+    dlg.showModal();
+  }
+
   function median(xs) { const o = [...xs].sort((a, b) => a - b); const m = o.length >> 1; return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2; }
 
   function tokensSection() {
