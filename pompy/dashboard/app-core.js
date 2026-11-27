@@ -61,9 +61,51 @@
     return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? "." + m[3] : ""}`;
   };
 
+  // The Prompt Score: the same 7 checks (one point each), shown on a scale of 10. 5 of 7 shows as 7.1.
+  P.ten = (s) => (s == null ? null : Math.round((s * 100) / 7) / 10);
+  P.tenText = (s) => (s == null ? "–" : P.ten(s).toFixed(1).replace(/\.0$/, ""));
+  P.band = (s) => (s == null ? "none" : s >= 4 ? "good" : s >= 2 ? "ok" : "low");
+  P.bandWord = (s) => ({ good: "Clear", ok: "Okay", low: "Vague", none: "Not scored" })[P.band(s)];
   P.scorePill = (row) => {
     if (row.s == null) return h("span", { class: "pill none", title: "Not scored: only task prompts get a score", text: "·" });
-    return h("span", { class: "pill" + (row.s <= 1 ? " low" : ""), title: "Specificity score", text: `${row.s}/7` });
+    const b = P.band(row.s);
+    return h("span", { class: "pill" + (b === "low" ? " low" : b === "ok" ? " mid" : ""), title: `Prompt Score: ${row.s} of 7 checks`, text: `${P.tenText(row.s)}/10` });
+  };
+
+  // ── Motion helpers (all skip movement under reduced motion) ──
+  P.calm = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Count a number up from 0 when it first shows. Final text is set first, so it's right without JS timing.
+  P.countUp = (el, to, { decimals = 0, suffix = "", ms = 900 } = {}) => {
+    const final = (decimals ? to.toFixed(decimals) : Math.round(to).toLocaleString()) + suffix;
+    el.textContent = final;
+    if (P.calm() || !isFinite(to) || to === 0) return el;
+    const t0 = performance.now();
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = (decimals ? (to * e).toFixed(decimals) : Math.round(to * e).toLocaleString()) + suffix;
+      if (k < 1) requestAnimationFrame(step); else el.textContent = final;
+    };
+    requestAnimationFrame(step);
+    return el;
+  };
+  // The score ring: an arc that fills to the score, and the number in the middle.
+  P.ring = (score10, { size = 148, label = "out of 10", band = "ok" } = {}) => {
+    const R = 52, C = 2 * Math.PI * R;
+    const val = s("circle", { class: "val", cx: 60, cy: 60, r: R, fill: "none", "stroke-width": 10, "stroke-dasharray": C.toFixed(1), "stroke-dashoffset": C.toFixed(1) });
+    const n = h("div", { class: "n" });
+    const el = h("div", { class: "ring " + band, style: `--ring:${size}px`, role: "img", "aria-label": score10 == null ? "No score yet" : `Prompt Score ${score10} out of 10` },
+      s("svg", { viewBox: "0 0 120 120", "aria-hidden": "true" }, s("circle", { class: "track", cx: 60, cy: 60, r: R, fill: "none", "stroke-width": 10 }), val),
+      h("div", { class: "in", "aria-hidden": "true" }, n, h("div", { class: "of", text: label })));
+    const target = score10 == null ? C : C * (1 - Math.max(0, Math.min(10, score10)) / 10);
+    if (score10 == null) n.textContent = "–";
+    else {
+      P.countUp(n, score10, { decimals: 1, ms: 1100 });
+      // Settle on the same form as every other score: 5, not 5.0.
+      setTimeout(() => (n.textContent = String(score10).replace(/\.0$/, "")), P.calm() ? 0 : 1150);
+    }
+    if (P.calm()) val.setAttribute("stroke-dashoffset", target.toFixed(1));
+    else requestAnimationFrame(() => requestAnimationFrame(() => val.setAttribute("stroke-dashoffset", target.toFixed(1))));
+    return el;
   };
   P.FRICTION_LABEL = {
     correction: "you corrected", problem: "problem after", interrupt: "interrupted",
@@ -138,7 +180,7 @@
   // ── boot ─────────────────────────────────────────────────────────────────
   P.start = async function () {
     try {
-      const res = await fetch("data.json");
+      const res = await fetch("data.json", { cache: "no-cache" }); // always the latest publish
       if (!res.ok) throw new Error(`data.json answered ${res.status}`);
       P.D = await res.json();
     } catch (e) {
@@ -157,33 +199,50 @@
     P.FEAT = Object.fromEntries(P.D.rules.features.map((f) => [f.name, f]));
     P.byId = new Map(P.D.prompts.map((r) => [r.u, r]));
     renderReadouts();
+    setupTheme();
     window.addEventListener("hashchange", route);
     route();
   };
 
-  // Five places, each with one job. Older links (#learned, #compare) still land somewhere sensible.
+  // Eight places, each with one job. Older links (#overview, #ask, #habits, #learned, #compare) still land.
   // A tab can hold more than one part; later parts sit under their own heading, or folded away.
   const TABS = {
-    overview: [["overview"]],
-    ask: [["ask"]],
+    home: [["home"], ["overview"]],
+    profile: [["profile"]],
+    write: [["plan"], ["ask"]],
     prompts: [["prompts"]],
-    habits: [["habits"], ["compare", "Are you improving?", "fold"]],
-    memory: [["memory"], ["learned", "Long-term memory: what Pompy believes"]],
+    insights: [["habits"], ["learned", "What Pompy believes about you"], ["compare", "Are you improving?", "fold"]],
+    projects: [["projects"]],
+    analytics: [["analytics"]],
+    memory: [["memory"]],
   };
-  const ALIAS = { learned: "memory", compare: "habits" };
+  const ALIAS = { overview: "home", ask: "write", plan: "write", habits: "insights", learned: "insights", compare: "insights" };
   const built = {};
+  let current = null;
   function route() {
     const want = location.hash.slice(1);
-    const name = TABS[want] ? want : ALIAS[want] || "overview";
+    // A hash that is neither a section nor an old name (the skip link's #main) leaves the page as it is.
+    if (want && !TABS[want] && !ALIAS[want] && current) return;
+    const name = TABS[want] ? want : ALIAS[want] || "home";
     for (const n of Object.keys(TABS)) {
-      document.getElementById("view-" + n).classList.toggle("on", n === name);
+      const view = document.getElementById("view-" + n);
+      view.classList.toggle("on", n === name);
       const a = document.querySelector(`#tabs a[href="#${n}"]`);
       if (n === name) a.setAttribute("aria-current", "page");
       else a.removeAttribute("aria-current");
     }
-    if (built[name]) return;
-    built[name] = true;
+    moveIndicator();
     const root = document.getElementById("view-" + name);
+    if (current !== name) {
+      // Replay the entrance each time a section opens: panels rise in, bars and rings fill.
+      root.classList.remove("enter");
+      void root.offsetWidth;
+      root.classList.add("enter");
+      if (current) window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+      current = name;
+    }
+    if (built[name]) { P.reveal(root); return; }
+    built[name] = true;
     for (const [part, title, mode] of TABS[name]) {
       if (!P.views[part]) continue;
       if (!title) { P.views[part](root); continue; }
@@ -192,6 +251,64 @@
       if (mode === "fold") root.append(h("details", { class: "panel fold" }, h("summary", { class: "panel-head" }, h("h2", { text: title })), box));
       else root.append(h("h2", { class: "section-title", text: title }), box);
     }
+    P.reveal(root);
+  }
+
+  // Panels below the fold rise in as you scroll to them (once per visit). Everything stays
+  // visible without JavaScript, without IntersectionObserver, and with reduced motion.
+  let io = null;
+  P.reveal = function (root) {
+    if (P.calm() || !("IntersectionObserver" in window)) return;
+    io ??= new IntersectionObserver((entries) => entries.forEach((en) => {
+      if (!en.isIntersecting) return;
+      en.target.classList.remove("await");
+      en.target.classList.add("revealed");
+      io.unobserve(en.target);
+    }), { rootMargin: "0px 0px -60px 0px" });
+    const fold = window.innerHeight;
+    // Safety net: if the observer never fires, a scroll (or 3 s) still shows everything.
+    if (!P._revealNet) {
+      P._revealNet = true;
+      const sweep = () => document.querySelectorAll(".await").forEach((el) => {
+        if (el.getBoundingClientRect().top < window.innerHeight) { el.classList.remove("await"); el.classList.add("revealed"); }
+      });
+      window.addEventListener("scroll", () => requestAnimationFrame(sweep), { passive: true });
+    }
+    setTimeout(() => root.querySelectorAll(":scope > .await").forEach((el) => {
+      if (el.getBoundingClientRect().top < window.innerHeight) { el.classList.remove("await"); el.classList.add("revealed"); }
+    }), 3000);
+    [...root.children].forEach((el) => {
+      el.classList.remove("revealed");
+      if (el.getBoundingClientRect().top > fold) { el.classList.add("await"); io.observe(el); }
+    });
+  };
+
+  // The nav's cobalt pill slides under the current tab.
+  function moveIndicator() {
+    const nav = document.getElementById("tabs");
+    const a = nav.querySelector('a[aria-current="page"]');
+    const ind = nav.querySelector(".ind");
+    if (!a || !ind) return;
+    ind.style.width = a.offsetWidth + "px";
+    ind.style.transform = `translateX(${a.offsetLeft}px)`;
+    if (!nav.classList.contains("ready")) requestAnimationFrame(() => requestAnimationFrame(() => nav.classList.add("ready")));
+    const r = a.getBoundingClientRect(), nr = nav.getBoundingClientRect();
+    if (r.left < nr.left || r.right > nr.right) a.scrollIntoView({ block: "nearest", inline: "center" });
+  }
+  window.addEventListener("resize", moveIndicator);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(moveIndicator);
+
+  // Light or dark: follows the system until you pick one.
+  function setupTheme() {
+    const btn = document.getElementById("theme");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const dark = getComputedStyle(document.documentElement).colorScheme.includes("dark");
+      const next = dark ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      btn.classList.remove("spin"); void btn.offsetWidth; btn.classList.add("spin");
+      try { localStorage.setItem("pompy-theme", next); } catch (e) {}
+    });
   }
 
   // Turn a panel into one that opens on click: for detail most visits don't need.
@@ -222,7 +339,7 @@
       ? `${P.niceDate(m.first_day, !sameYear)} to ${P.niceDate(m.last_day, true)}`
       : "nothing yet";
     box.append(
-      h("span", {}, h("b", { text: `${m.prompts} prompts` }), " remembered"),
+      h("span", {}, h("b", { text: `${m.prompts.toLocaleString()} prompts` }), " remembered"),
       h("span", { title: `Rubric version ${m.rubric_version}, times in ${m.timezone}`, text: span }));
 
   }
@@ -240,7 +357,7 @@
     let period = "30d";
     const sel = P.periodSelect("tl-period", period, (v) => { period = v; draw(); });
     const legend = h("div", { class: "chips small" },
-      h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--accent)" }), "a prompt"),
+      h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--primary)" }), "a prompt"),
       h("span", { class: "legend" }, h("i", { class: "dot", style: "background:var(--note)" }), "reply was unclear or missed"));
 
     function draw() {
@@ -281,7 +398,7 @@
           const bad = r.v === "unclear" || r.v === "missed";
           const words = (r.t || "").replace(/\s+/g, " ").trim();
           const say = `${wd} ${P.niceDate(day)}, ${r.hh} · ${r.p}${bad ? " · reply unclear or missed" : ""} · ${words.length > 90 ? words.slice(0, 89) + "…" : words}`;
-          const dot = s("circle", { cx: x(r.hh), cy: y, r: dotR, fill: bad ? "var(--note)" : "var(--accent)", "fill-opacity": 0.75, tabindex: 0 }, s("title", {}, say));
+          const dot = s("circle", { cx: x(r.hh), cy: y, r: dotR, fill: bad ? "var(--note)" : "var(--primary)", "fill-opacity": 0.75, tabindex: 0 }, s("title", {}, say));
           dot.addEventListener("mouseenter", () => (readout.textContent = say));
           dot.addEventListener("focus", () => (readout.textContent = say));
           svg.append(dot);

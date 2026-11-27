@@ -44,7 +44,7 @@
   }
   function scoreBadge(text) {
     const r = P.S.scoreText(text, false, false);
-    return r.score == null ? h("span", { class: "pill none", text: r.role }) : h("span", { class: "pill", text: `${r.score}/7` });
+    return r.score == null ? h("span", { class: "pill none", text: r.role }) : P.scorePill({ s: r.score });
   }
   async function copyText(text, btn) {
     try {
@@ -59,7 +59,8 @@
   // ── Habits ───────────────────────────────────────────────────────────────
   P.views.habits = function (root) {
     const hs = P.D.habits || [];
-    root.append(h("p", { class: "lede", text: "The three parts your task prompts leave out most often. For each, one of your real prompts: what is missing from it, and a version that would work better." }));
+    root.append(h("div", { class: "page-head" }, h("span", { class: "eyebrow", text: "Insights" }), h("h1", { text: "How to prompt better" }),
+      h("p", { class: "lede", text: "The three checks your task prompts leave out most often. For each, one of your real prompts: what is missing, and a version that would work better." })));
     hs.forEach((hb, i) => root.append(habitCard(hb, i + 1, hs.length)));
   };
 
@@ -90,7 +91,7 @@
     let idx = 0;
     const exBox = h("div", { class: "habit-body" });
     const card = h("div", { class: "panel", id: "habit-" + hb.feature },
-      h("div", { class: "panel-head" }, h("span", { class: "habit-rank", text: `${rank} of ${total}` }), h("span", { class: "muted small", text: `in ${hb.present_pct}% of your task prompts` })),
+      h("div", { class: "panel-head" }, h("span", { class: "habit-rank", text: `Fix ${rank} of ${total}` }), h("span", { class: "muted small", text: `in ${hb.present_pct}% of your task prompts` })),
       h("h2", {}, h("span", { class: "muted", text: "What to work on: " }), hb.label),
       h("p", { class: "note", text: hb.tip }),
       trend,
@@ -197,7 +198,8 @@
       tabs.append(b);
     });
     root.append(
-      h("p", { class: "lede", text: "Open a prompt to see what it was missing and get a better version." }),
+      h("div", { class: "page-head" }, h("span", { class: "eyebrow", text: "Prompts" }), h("h1", { text: "Learn from your prompts" }),
+        h("p", { class: "lede", text: "Open a prompt to see its score, what it was missing, and a better version." })),
       h("div", { class: "panel" }, h("div", { class: "controls spread" }, tabs, search), count, list, more));
 
     function draw() {
@@ -235,7 +237,8 @@
   }
 
   function detail(r) {
-    const box = h("div", { class: "detail" }, h("div", { class: "full", text: r.t }));
+    const box = h("div", { class: "detail" }, h("div", { class: "full", text: r.t }),
+      r.tk ? h("p", { class: "small muted", text: `This prompt used ${P.fmtTok(r.tk)} tokens, every reply and tool call included.` }) : null);
     if (r.q) box.append(h("p", { class: "small" }, h("b", { text: "Claude had to ask: " }), r.q));
     const like = (r.nb || []).map((u) => P.byId.get(u)).filter(Boolean);
     if (like.length) {
@@ -307,7 +310,8 @@
     const better = betterBlock(() => ta.value, () => P.S.scoreText(ta.value, false, false).missing,
       (text) => h("button", { class: "btn", text: "Use it", onclick: () => { ta.value = text; draw(); } }),
       () => knowledge(proj.value).join("\n"));
-    root.append(h("div", { class: "panel coach" },
+    root.append(h("div", { class: "panel coach", id: "write-box" },
+      h("span", { class: "eyebrow", text: "Step 2" }),
       h("h2", { text: "Write a better prompt" }),
       h("div", { class: "controls" }, h("label", { class: "small muted", text: "For" }), proj),
       ta, read, better.el,
@@ -317,8 +321,13 @@
     const showKnows = () => { knows.textContent = ""; const k = knowledge(proj.value); (k.length ? k : ["Nothing yet for this project."]).forEach((x) => knows.append(h("li", { text: x }))); };
     proj.addEventListener("change", () => { showKnows(); draw(); });
     showKnows();
-    if (P.prefill) { ta.value = P.prefill; P.prefill = null; }
-    window.addEventListener("hashchange", () => { if (location.hash === "#ask" && P.prefill) { ta.value = P.prefill; P.prefill = null; draw(); } });
+    // Arrived from "Write a better version": bring the box into view once the page is built.
+    if (P.prefill) {
+      ta.value = P.prefill; P.prefill = null;
+      setTimeout(() => { ta.scrollIntoView({ block: "center", behavior: P.calm() ? "auto" : "smooth" }); ta.focus({ preventScroll: true }); }, 60);
+    }
+    window.addEventListener("hashchange", () => { if (/^#(ask|write)$/.test(location.hash) && P.prefill) { ta.value = P.prefill; P.prefill = null; draw(); ta.focus(); } });
+    P.useDraft = (text) => { ta.value = text; draw(); ta.scrollIntoView({ block: "center", behavior: P.calm() ? "auto" : "smooth" }); ta.focus(); };
 
     function draw() {
       const text = ta.value.trim();
@@ -337,8 +346,9 @@
       const next = order.filter((n) => r.missing.includes(n)).slice(0, 2);
       read.append(
         h("div", { class: "controls" },
-          h("div", { class: "dots " + cls, "aria-label": `${s} of 7 parts` }, Array.from({ length: 7 }, (_, i) => h("i", { class: i < s ? "on" : "" }))),
-          h("b", { class: "coach-score " + cls, text: s >= 4 ? "Clear" : s >= 2 ? "Okay" : "Vague" })),
+          h("b", { class: "coach-score " + cls, text: `${P.tenText(s)}/10` }),
+          h("div", { class: "dots " + cls, "aria-label": `${s} of 7 checks` }, Array.from({ length: 7 }, (_, i) => h("i", { class: i < s ? "on" : "" }))),
+          h("span", { class: "score-word " + cls, text: s >= 4 ? "Clear" : s >= 2 ? "Okay" : "Vague" })),
         next.length
           ? h("ul", { class: "next-list" }, next.map((n) => h("li", {}, h("b", { text: `Add ${P.FEAT[n].label.toLowerCase()}. ` }), h("span", { class: "muted", text: P.FEAT[n].tip }))))
           : h("p", { class: "better", text: "Every part is there." }));

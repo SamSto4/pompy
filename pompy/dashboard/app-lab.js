@@ -12,7 +12,8 @@
     const beliefs = ((D.learned || {}).patterns || []);
     const held = beliefs.filter((p) => p.status === "supported");
     root.append(
-      h("p", { class: "lede", text: "How Pompy remembers you, in three layers." }),
+      h("div", { class: "page-head" }, h("span", { class: "eyebrow", text: "Memory lab" }), h("h1", { text: "How Pompy remembers you" }),
+        h("p", { class: "lede", text: "Three layers of agent memory, built from your own chats. Query the short-term layer below and watch a long-term belief fade." })),
       h("div", { class: "layers" },
         layer("Short-term", "~600 tokens", "What it can hold for one question. Try it below."),
         layer("Episodic", `${D.meta.prompts} prompts`, "Everything you sent, and what happened after."),
@@ -92,7 +93,7 @@
   const ROWS = () => [
     ["typed", "Typed prompts", null, false],
     ["median_words", "Median words you wrote", null, false],
-    ["score_mean", "Specificity, mean (0 to 7)", true, false],
+    ["score_mean", "Prompt Score, mean (out of 10)", true, false],
     ["openers_mean", "session openers", true, true],
     ["follow_ups_mean", "follow-ups", true, true],
     ...P.D.rules.features.map((f) => ["has_" + f.name, `with ${f.label.toLowerCase()} (%)`, true, true]),
@@ -108,7 +109,7 @@
     const selA = P.periodSelect("cmp-a", a, (v) => { a = v; draw(); });
     const selB = P.periodSelect("cmp-b", b, (v) => { b = v; draw(); });
     root.append(
-      h("p", { class: "lede", text: "Two windows over the same memory, side by side: are you improving? The numbers match `pompy compare` (same per-prompt verdicts, same definitions)." }),
+      h("p", { class: "lede", text: "Two windows over the same memory, side by side: are you improving? The numbers match `pompy compare` (same per-prompt verdicts, same definitions), except the Prompt Score rows, which read out of 10 here (the same 7 checks, scaled)." }),
       h("div", { class: "panel" },
         h("div", { class: "controls" }, h("label", { for: "cmp-a", class: "small muted", text: "Compare" }), selA, h("label", { for: "cmp-b", class: "small muted", text: "with" }), selB),
         table, warn));
@@ -117,6 +118,8 @@
       const pa = P.period(a), pb = P.period(b);
       const ma = P.metrics(P.D.prompts.filter(pa.test));
       const mb = P.metrics(P.D.prompts.filter(pb.test));
+      // Scores read out of 10, like everywhere else (the same 7 checks, scaled).
+      for (const m of [ma, mb]) for (const k of ["score_mean", "openers_mean", "follow_ups_mean"]) if (m[k] != null) m[k] = P.round((m[k] * 10) / 7, 1);
       const t = h("table", { class: "cmp" },
         h("thead", {}, h("tr", {}, h("th", { text: "" }), h("th", { text: pa.label }), h("th", { text: pb.label }), h("th", { text: "Change" }))));
       const body = h("tbody", {});
